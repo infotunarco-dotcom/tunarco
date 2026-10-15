@@ -1,0 +1,325 @@
+/**
+ * TUNARCO – SERVEUR EN LIGNE du site de gestion (Google Apps Script)
+ *
+ *  1) Garde les données du site (élèves, présences, paiements…) dans un fichier Google Sheets privé
+ *     « Tunarco_Gestion_Donnees » de VOTRE Drive  ➜ tous les formateurs voient les mêmes données.
+ *  2) Vérifie les identifiants (mots de passe chiffrés côté serveur). Un formateur ne reçoit jamais
+ *     les paiements ni la caisse.
+ *  3) Recopie automatiquement les présences / paiements / caisse / master class / coordonnées
+ *     dans vos fichiers Presence_Academie, Paiement_Academie et Base de données.
+ *
+ *  Installation : Déployer > Nouveau déploiement > Application Web
+ *                 Exécuter en tant que : Moi · Qui a accès : Tout le monde
+ */
+
+const INIT_CODE = 'TUNARCO-2026';        // code demandé une seule fois pour remplir le serveur la première fois
+const SESSION_H = 12;                   // durée d'une connexion (heures)
+const ADMIN_ONLY = ['tx', 'caisse', 'users', 'sync', 'objectif', 'tarifs', 'prixProjet', 'years', 'listes', 'menu', 'champs'];
+
+function doGet() { return ContentService.createTextOutput('Tunarco serveur : OK'); }
+
+function doPost(e) {
+  let body = {};
+  try { body = JSON.parse(e.postData.contents); } catch (err) { return out_({ error: 'Requête invalide' }); }
+  try {
+    if (body.action === 'login') return out_(login_(body));
+    if (body.action === 'init') return out_(init_(body));
+    if (body.action === 'get') return out_(get_(body));
+    if (body.action === 'save') return out_(save_(body));
+    if (body.ops) { session_(body.token); return ContentService.createTextOutput(synchro_(body)); }
+    return out_({ error: 'Action inconnue' });
+  } catch (err) {
+    return out_({ error: String(err.message || err) });
+  }
+}
+function out_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+
+/* ---------------- stockage ---------------- */
+function store_() {
+  const p = PropertiesService.getScriptProperties();
+  let id = p.getProperty('STORE_ID'), ss = null;
+  if (id) { try { ss = SpreadsheetApp.openById(id); } catch (e) { ss = null; } }
+  if (!ss) { ss = SpreadsheetApp.create('Tunarco_Gestion_Donnees'); p.setProperty('STORE_ID', ss.getId()); }
+  return ss.getSheets()[0];
+}
+function read_() {
+  const sh = store_(); if (sh.getLastRow() === 0) return null;
+  const txt = sh.getRange(1, 1, sh.getLastRow(), 1).getValues().map(r => String(r[0]).slice(1)).join('');
+  return txt ? JSON.parse(txt) : null;
+}
+function write_(obj) {
+  const sh = store_(), s = JSON.stringify(obj), rows = [];
+  for (let i = 0; i < s.length; i += 40000) rows.push(['x' + s.slice(i, i + 40000)]);
+  sh.clearContents(); sh.getRange(1, 1, rows.length, 1).setNumberFormat('@').setValues(rows);
+}
+function version_() { return +PropertiesService.getScriptProperties().getProperty('VERSION') || 0; }
+function bump_() { const v = version_() + 1; PropertiesService.getScriptProperties().setProperty('VERSION', String(v)); return v; }
+function hash_(p) { return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, 'tunarco::' + String(p || ''), Utilities.Charset.UTF_8)); }
+
+/* ---------------- sessions ---------------- */
+function newSession_(u) { const t = Utilities.getUuid(); CacheService.getScriptCache().put('S_' + t, JSON.stringify({ id: u.id, role: u.role }), SESSION_H * 3600); return t; }
+function session_(t) { const v = t && CacheService.getScriptCache().get('S_' + t); if (!v) throw new Error('SESSION'); return JSON.parse(v); }
+
+/* ---------------- vues ---------------- */
+function cleanUsers_(users) { return (users || []).map(u => ({ id: u.id, nom: u.nom, login: u.login, role: u.role, tel: u.tel || '' })); }
+function view_(d, role) {
+  const o = JSON.parse(JSON.stringify(d)); o.users = cleanUsers_(o.users);
+  if (role !== 'admin') ADMIN_ONLY.filter(k => k !== 'users').forEach(k => delete o[k]);
+  return o;
+}
+function findUser_(d, login) {
+  const id = String(login || '').trim().toLowerCase();
+  return (d.users || []).find(u => String(u.login || '').toLowerCase() === id || String(u.nom || '').trim().toLowerCase() === id);
+}
+
+/* ---------------- actions ---------------- */
+function login_(b) {
+  const d = read_(); if (!d) return { needInit: true };
+  const u = findUser_(d, b.login);
+  if (!u || u.hash !== hash_(String(b.pass || '').trim())) return { error: 'Identifiant ou mot de passe incorrect.' };
+  return { token: newSession_(u), user: { id: u.id, nom: u.nom, role: u.role, login: u.login }, version: version_(), data: view_(d, u.role) };
+}
+function init_(b) {
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    if (read_()) return { error: 'Le serveur contient déjà des données.' };
+    if (String(b.code || '').trim() !== INIT_CODE) return { error: 'Code d\'initialisation incorrect.' };
+    const d = b.data || {};
+    d.users = (d.users || []).map(u => ({ id: u.id, nom: u.nom, login: u.login, role: u.role, tel: u.tel || '', hash: hash_(String(u.pass || '').trim()) }));
+    if (!d.users.some(u => u.role === 'admin')) return { error: 'Aucun administrateur dans ces données.' };
+    write_(d); bump_();
+    return login_(b);
+  } finally { lock.releaseLock(); }
+}
+function get_(b) {
+  const s = session_(b.token), v = version_();
+  if (+b.since >= v) return { version: v };
+  return { version: v, data: view_(read_(), s.role) };
+}
+function save_(b) {
+  const s = session_(b.token);
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const cur = read_() || {}, v = version_();
+    if (+b.base !== v) return { conflict: true, version: v, data: view_(cur, s.role) };
+    const d = b.data || {};
+    if (s.role === 'admin') {
+      const old = {}; (cur.users || []).forEach(u => old[u.id] = u);
+      d.users = (d.users || []).map(u => ({ id: u.id, nom: u.nom, login: u.login, role: u.role, tel: u.tel || '',
+        hash: u.pass ? hash_(String(u.pass).trim()) : (old[u.id] ? old[u.id].hash : hash_('')) }));
+      if (!d.users.some(u => u.role === 'admin')) return { error: 'Il faut au moins un administrateur.' };
+    } else {
+      ADMIN_ONLY.forEach(k => { if (k in cur) d[k] = cur[k]; else delete d[k]; });
+    }
+    delete d.session;
+    write_(d);
+    return { ok: true, version: bump_() };
+  } finally { lock.releaseLock(); }
+}
+
+/* ======================================================================
+   SYNCHRO vers vos fichiers Google Sheets (Présence, Paiement, Base de données)
+   ====================================================================== */
+function synchro_(body) {
+  const lock = LockService.getScriptLock(); lock.waitLock(25000);
+  try {
+    if (body.annee) ANNEE_ = body.annee;
+    const ops = body.ops || [], ctx = {};
+    ops.forEach(op => {
+      try {
+        if (op.k === 'pres') writePres_(ctx, op);
+        else if (op.k === 'pay') writePay_(ctx, op);
+        else if (op.k === 'caisse') writeCaisse_(ctx, op);
+        else if (op.k === 'table') writeTable_(ctx, op);
+      } catch (err) { log_(ctx, 'Erreur', JSON.stringify(op).slice(0, 300), String(err)); }
+    });
+    SpreadsheetApp.flush();
+    return 'ok ' + ops.length;
+  } finally { lock.releaseLock(); }
+}
+
+// Pour une nouvelle année, créez simplement les fichiers avec la nouvelle année dans le nom
+// (ex : Presence_Academie_Robotique_2027-2028 et Paiement_Academie_2027-2028_design) : le site envoie l'année ouverte.
+let ANNEE_ = '2026-2027';
+const PRES_NAME = () => 'Presence_Academie_Robotique_' + ANNEE_;
+const PAY_NAME  = () => 'Paiement_Academie_' + ANNEE_ + '_design';
+const IDS = { '2026-2027': { pres: '', pay: '1hrdD1EG3689RfciCD34Pl2HkSrFHrwgX41xTqPX39s0' } };   // optionnel : ID des fichiers par année
+const PRES_ID = () => (IDS[ANNEE_] || {}).pres || '';   // collez ici l'ID du fichier Présence APRÈS conversion en Google Sheets si besoin
+const PAY_ID  = () => (IDS[ANNEE_] || {}).pay || '';
+const BASE_NAME = 'Base de données';                                   // fichier des inscriptions (coordonnées)
+const BASE_ID   = '1h3h4IWFLw7av07koq5r0QsCtzV_THO5-b0YA-jl0ojM';
+
+/* ---------------- outils ---------------- */
+function norm_(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/\bmed\b|\bmohamed\b|\bmouhamed\b|\bmohammed\b/g, 'mohamed').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+function sameName_(a, b) {
+  const x = norm_(a), y = norm_(b); if (!x || !y) return false; if (x === y) return true;
+  return x.split(' ').sort().join(' ') === y.split(' ').sort().join(' ');   // « Boukhris Med Khalil » = « Med Khalil Boukhris »
+}
+function openFile_(id, name) {
+  if (id) return SpreadsheetApp.openById(id);
+  const it = DriveApp.searchFiles('title contains "' + name + '" and mimeType = "application/vnd.google-apps.spreadsheet" and trashed = false');
+  if (!it.hasNext()) throw new Error('Fichier Google Sheets introuvable : ' + name + ' (pensez à « Fichier > Enregistrer au format Google Sheets »)');
+  return SpreadsheetApp.open(it.next());
+}
+function log_(ctx, type, a, b) {
+  try {
+    const ss = ctx.paySS || ctx.presSS || openFile_(PAY_ID(), PAY_NAME());
+    const sh = ss.getSheetByName('Synchro_log') || ss.insertSheet('Synchro_log');
+    if (sh.getLastRow() === 0) sh.appendRow(['Date', 'Type', 'Détail', 'Message']);
+    sh.appendRow([new Date(), type, a, b]);
+  } catch (e) {}
+}
+const JOURS_ = ['MARDI', 'MERCREDI', 'JEUDI', 'VENDREDI', 'SAMEDI', 'DIMANCHE', 'LUNDI'];
+const MOIS_ = ['janv', 'fevr', 'mars', 'avr', 'mai', 'juin', 'juil', 'aout', 'sept', 'oct', 'nov', 'dec'];
+function dateKey_(v) {   // « 7-oct. » ou une vraie date  ➜  « 7-oct »
+  if (v instanceof Date) return v.getDate() + '-' + MOIS_[v.getMonth()];
+  const m = norm_(v).replace(/\s/g, '').match(/^(\d{1,2})(janv|fevr|mars|avr|mai|juin|juil|aout|sept|oct|nov|dec)/);
+  return m ? (+m[1]) + '-' + m[2] : '';
+}
+
+/* ---------------- PRÉSENCES ---------------- */
+function presIndex_(ctx) {
+  if (ctx.presIdx) return ctx.presIdx;
+  ctx.presSS = openFile_(PRES_ID(), PRES_NAME());
+  const sh = ctx.presSS.getSheetByName('Présence') || ctx.presSS.getSheetByName('Presence');
+  if (!sh) throw new Error('Onglet « Présence » introuvable');
+  ctx.presSheet = sh;
+  const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  const rows = []; let day = '', dateRow = null, comp = false;
+  vals.forEach((r, i) => {
+    const a = norm_(r[0]).toUpperCase();
+    const j = JOURS_.find(d => a.indexOf(d) === 0); if (j) day = j;
+    if (/^G\d/i.test(String(r[1]).trim())) comp = /comp/i.test(String(r[1]));
+    const dk = r.slice(6).map(dateKey_);
+    if (dk.filter(Boolean).length >= 3) dateRow = dk;                    // ligne des dates de ce jour
+    if (r[2] && !/nom et/i.test(r[2])) rows.push({ row: i + 1, name: String(r[2]), day: day, comp: comp, dates: dateRow });
+  });
+  return ctx.presIdx = rows;
+}
+function writePres_(ctx, op) {
+  const idx = presIndex_(ctx), jour = String(op.jour || '').toUpperCase();
+  const cands = idx.filter(x => sameName_(x.name, op.nom));
+  const r = cands.find(x => x.day === jour && x.comp === !!op.comp) || cands.find(x => x.day === jour) || cands[0];
+  if (!r) return log_(ctx, 'Présence', op.nom + ' (' + op.jour + ')', 'élève introuvable dans la feuille Présence');
+  const d = new Date(op.date + 'T12:00:00'); const key = d.getDate() + '-' + MOIS_[d.getMonth()];
+  const c = r.dates ? r.dates.indexOf(key) : -1;
+  if (c < 0) return log_(ctx, 'Présence', op.nom + ' ' + op.date, 'date introuvable dans la feuille');
+  ctx.presSheet.getRange(r.row, 7 + c).setValue(op.v || '');
+}
+
+/* ---------------- PAIEMENTS ---------------- */
+function paySheet_(ctx, trim) {
+  ctx.paySS = ctx.paySS || openFile_(PAY_ID(), PAY_NAME());
+  ctx.pay = ctx.pay || {};
+  if (ctx.pay[trim]) return ctx.pay[trim];
+  const sh = ctx.paySS.getSheets().find(s => s.getName().replace(/\s+/g, '').toUpperCase() === ('PAIEMENT' + trim).toUpperCase());
+  if (!sh) throw new Error('Onglet « PAIEMENT ' + trim + ' » introuvable');
+  const vals = sh.getRange(1, 1, sh.getLastRow(), sh.getLastColumn()).getValues();
+  // colonnes d'après les titres de la ligne 2
+  const head = vals[1].map(x => norm_(x));
+  const col = n => head.findIndex(h => h.indexOf(n) === 0) + 1;
+  const months = { T1: ['octobre', 'novembre', 'decembre'], T2: ['janvier', 'fevrier', 'mars'], T3: ['avril', 'mai', 'juin'] }[trim];
+  const cols = { insc: col('frais insc'), m1: col(months[0]), m2: col(months[1]), m3: col(months[2]), comp: col('competiteur'),
+                 mode: col('mode de paiement'), rq: col('rq'), type: col('type de paiement'), nom: col('nom et prenom') || 4 };
+  let day = ''; const rows = [], days = {};
+  vals.forEach((r, i) => { const a = norm_(r[0]).toUpperCase(); const j = JOURS_.find(d => a.indexOf(d) === 0); if (j) day = j;
+    const nm = String(r[cols.nom - 1] || '').trim(); if (i < 2) return;
+    if (/^tt$/i.test(nm)) { rows.tt = i + 1; return; }
+    if (rows.tt) return;
+    days[day] = i + 1;                                  // dernière ligne de chaque jour
+    if (nm) rows.push({ row: i + 1, name: nm, day: day }); });
+  return ctx.pay[trim] = { sh: sh, cols: cols, rows: rows, days: days, lastCol: sh.getLastColumn() };
+}
+function writePay_(ctx, op) {
+  const P = paySheet_(ctx, op.trim);
+  let r = P.rows.find(x => sameName_(x.name, op.nom));
+  if (!r) r = addPayRow_(ctx, op);
+  if (!r) return log_(ctx, 'Paiement ' + op.trim, op.nom, 'élève introuvable dans PAIEMENT ' + op.trim);
+  ['insc', 'm1', 'm2', 'm3', 'comp'].forEach(k => {
+    if (P.cols[k] > 0 && op[k] !== undefined) P.sh.getRange(r.row, P.cols[k]).setValue(op[k] ? +op[k] : '');
+  });
+  ['mode', 'rq', 'type'].forEach(k => {
+    if (P.cols[k] > 0 && op[k] !== undefined) P.sh.getRange(r.row, P.cols[k]).setValue(op[k] || '');
+  });
+}
+
+/** nouvel élève : on ajoute une ligne à la fin de son jour (formules et mise en forme recopiées de la ligne du dessus) */
+function addPayRow_(ctx, op) {
+  let P = ctx.pay[op.trim]; const jour = String(op.jour || '').toUpperCase();
+  const after = P.days[jour] || (P.rows.tt ? P.rows.tt - 1 : P.sh.getLastRow());
+  P.sh.insertRowAfter(after);
+  P.sh.getRange(after, 1, 1, P.lastCol).copyTo(P.sh.getRange(after + 1, 1, 1, P.lastCol));
+  const blank = ['insc', 'm1', 'm2', 'm3', 'comp', 'mode', 'rq', 'type'].map(k => P.cols[k]).filter(c => c > 0);
+  blank.forEach(c => P.sh.getRange(after + 1, c).clearContent());
+  [1, 2, 3].filter(c => c !== P.cols.nom).forEach(c => { const cell = P.sh.getRange(after + 1, c); if (!cell.isPartOfMerge()) cell.clearContent(); });
+  P.sh.getRange(after + 1, P.cols.nom).setValue(op.nom);
+  delete ctx.pay[op.trim]; P = paySheet_(ctx, op.trim);
+  return P.rows.find(x => sameName_(x.name, op.nom));
+}
+
+/* ---------------- ÉTAT DE CAISSE (dépenses / recettes saisies dans le site) ---------------- */
+function caisseSheet_(ctx, op) {
+  ctx.paySS = ctx.paySS || openFile_(PAY_ID(), PAY_NAME());
+  const m = +String(op.date).slice(5, 7);
+  if (op.compte === 'masterclass') return ctx.paySS.getSheetByName('ETAT DE CAISSE Master Class') || newCaisseTab_(ctx.paySS, 'ETAT DE CAISSE Master Class', 'ÉTAT DE CAISSE MASTER CLASS');
+  const want = op.compte === 'projet' ? 'ETATDECAISSEPROJET' : 'ETATDECAISSE' + (m >= 7 || m <= 0 ? 'T1' : m <= 3 ? 'T2' : 'T3');
+  const sh = ctx.paySS.getSheets().find(s => norm_(s.getName()).replace(/[^a-z0-9]/g, '').toUpperCase().indexOf(want) === 0);
+  if (!sh) throw new Error('Onglet état de caisse introuvable (' + want + ')');
+  return sh;
+}
+function writeCaisse_(ctx, op) {
+  const sh = caisseSheet_(ctx, op), last = sh.getLastRow();
+  const c0 = op.sens === 'in' ? 1 : 5;                  // Recettes A:D  ·  Dépenses E:H
+  const vals = sh.getRange(1, c0, last, 4).getValues(), notes = sh.getRange(1, c0 + 1, last, 1).getNotes();
+  let tt = vals.findIndex((r, i) => i > 2 && /^tt$/i.test(String(r[1]).trim())) + 1; if (tt <= 0) tt = last + 1;
+  let row = notes.findIndex(n => n[0] === 'id:' + op.id) + 1;
+  // l'opération a peut-être changé de côté (recette <-> dépense) : on efface l'autre côté
+  const o0 = op.sens === 'in' ? 5 : 1; const on = sh.getRange(1, o0 + 1, last, 1).getNotes(); const orow = on.findIndex(n => n[0] === 'id:' + op.id) + 1;
+  if (orow > 0) { sh.getRange(orow, o0, 1, 4).clearContent(); sh.getRange(orow, o0 + 1).clearNote(); }
+  if (op.del) { if (row > 0) { sh.getRange(row, c0, 1, 4).clearContent(); sh.getRange(row, c0 + 1).clearNote(); } return; }
+  if (row <= 0) {
+    // une ligne déjà saisie à la main avec le même libellé et le même montant ?
+    row = vals.findIndex((r, i) => i >= 3 && i < tt - 1 && norm_(r[1]) === norm_(op.libelle) && Math.abs((+r[2] || 0) - op.montant) < 0.001) + 1;
+  }
+  if (row <= 0) row = vals.findIndex((r, i) => i >= 3 && i < tt - 1 && !String(r[1]).trim() && !r[2]) + 1;
+  if (row <= 0) { sh.insertRowBefore(tt); row = tt; }
+  const d = new Date(op.date + 'T12:00:00');
+  sh.getRange(row, c0, 1, 4).setValues([[d, op.libelle, op.montant, op.rq || '']]);
+  sh.getRange(row, c0 + 1).setNote('id:' + op.id);
+}
+
+function newCaisseTab_(ss, name, title) {
+  const sh = ss.insertSheet(name), n = 60, tt = 4 + n;
+  sh.getRange(1, 1).setValue(title).setFontWeight('bold').setFontSize(14);
+  sh.getRange(2, 1).setValue('Recettes').setFontWeight('bold'); sh.getRange(2, 5).setValue('Dépenses').setFontWeight('bold');
+  sh.getRange(3, 1, 1, 8).setValues([['Date', 'Libellés', 'Montant', 'RQ', 'Date', 'Libellés', 'Montant', 'RQ']]).setFontWeight('bold').setBackground('#1f4e79').setFontColor('#ffffff');
+  sh.getRange(tt, 2).setValue('TT'); sh.getRange(tt, 3).setFormula('=SUM(C4:C' + (tt - 1) + ')'); sh.getRange(tt, 7).setFormula('=SUM(G4:G' + (tt - 1) + ')');
+  sh.getRange(tt + 1, 5).setValue('Solde caisse'); sh.getRange(tt + 1, 7).setFormula('=C' + tt + '-G' + tt);
+  sh.getRange(tt, 1, 2, 8).setFontWeight('bold');
+  return sh;
+}
+
+/* ---------------- ONGLETS COMPLETS (master class, liste des élèves) : réécrits à chaque modification ---------------- */
+function writeTable_(ctx, op) {
+  let ss;
+  if (op.file === 'pay') ss = ctx.paySS = ctx.paySS || openFile_(PAY_ID(), PAY_NAME());
+  else if (op.file === 'pres') ss = ctx.presSS = ctx.presSS || openFile_(PRES_ID(), PRES_NAME());
+  else ss = ctx.baseSS = ctx.baseSS || openFile_(BASE_ID, BASE_NAME);
+  const sh = ss.getSheetByName(op.tab) || ss.insertSheet(op.tab);
+  const rows = op.rows || [], w = Math.max(1, ...rows.map(r => r.length));
+  sh.clearContents(); sh.clearFormats();
+  if (!rows.length) return;
+  sh.getRange(1, 1, rows.length, w).setValues(rows.map(r => { const o = r.slice(); while (o.length < w) o.push(''); return o; }));
+  (op.bold || []).forEach(i => { if (i < rows.length) sh.getRange(i + 1, 1, 1, w).setFontWeight('bold').setBackground(i === 0 ? '#ffffff' : '#d9e2f3'); });
+  sh.getRange(1, 1).setFontSize(13);
+  sh.setFrozenRows(Math.min(2, rows.length));
+}
+
+/** À lancer une fois depuis l'éditeur (bouton ▶) pour autoriser l'accès aux fichiers et vérifier qu'ils sont trouvés. */
+function test() {
+  const p = openFile_(PRES_ID(), PRES_NAME()), q = openFile_(PAY_ID(), PAY_NAME()), b = openFile_(BASE_ID, BASE_NAME);
+  Logger.log('Présence : ' + p.getName() + ' | Paiement : ' + q.getName() + ' | Base : ' + b.getName());
+}
