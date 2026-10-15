@@ -693,7 +693,7 @@ function syncFlush(){
 }
 function syncAll(){ if(!(CLOUD.url||(S.sync||{}).url)) return toast('Aucun serveur configuré'); if(!confirm('Envoyer toutes les présences et tous les paiements vers Google Sheets ?')) return; const snap=syncSnapshot(); SYNC.base=snap; SYNC.queue.push(...Object.values(snap)); syncFlush(); toast(Object.keys(snap).length+' lignes envoyées'); }
 /* ===== MODE EN LIGNE (serveur Google privé) ===== */
-const CLOUD_DEFAULT='';
+const CLOUD_DEFAULT='https://script.google.com/macros/s/AKfycbwVgZMRvTyGzxuqBxQ2mobPeFOvMIzSbXsiE2veeWvXXQjJC1djJWLAKb2f7TOBJH4ktA/exec';
 const CLOUD={url:'', token:'', ver:0, busy:false, last:'', at:''};
 try{ CLOUD.url = localStorage.getItem('tunarco_cloud_url') || (CLOUD_DEFAULT.indexOf('http')===0?CLOUD_DEFAULT:''); }catch(e){ CLOUD.url = CLOUD_DEFAULT.indexOf('http')===0?CLOUD_DEFAULT:''; }
 async function cloudCall(body){ const r=await fetch(CLOUD.url,{method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(body)}); return r.json(); }
