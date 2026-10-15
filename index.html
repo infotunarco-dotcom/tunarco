@@ -266,7 +266,7 @@ select.ein.st-ess{background:#ffe699;color:#7f6000;font-weight:600} select.ein.s
     <div class="grid" onkeydown="if(event.key==='Enter')doLogin()">
       <input id="lg-user" placeholder="Identifiant" autocomplete="username">
       <input id="lg-pass" type="password" placeholder="Mot de passe" autocomplete="current-password">
-      <div id="lg-err" class="small" style="color:var(--bad);display:none">Identifiant ou mot de passe incorrect.</div>
+      <div id="lg-err" class="small" style="color:var(--bad);display:none">Identifiant ou mot de passe incorrect.</div><div id="lg-cloud" class="small muted" style="text-align:center"></div><div style="text-align:center;margin-top:8px"><a class="small" style="cursor:pointer;color:var(--mut)" onclick="const v=prompt('Adresse du serveur Tunarco (…/exec) – laisser vide pour travailler sans serveur :', CLOUD.url||''); if(v!==null){ setCloudUrl(v); document.getElementById('lg-srv').textContent=CLOUD.url?'☁️ Serveur en ligne configuré':''; }">⚙️ Serveur</a> <span id="lg-srv" class="small" style="color:var(--green)"></span></div><div id="lg-init" style="display:none"></div>
       <button type="button" class="btn wide" onclick="doLogin()">Se connecter</button>
     </div>
 
@@ -509,15 +509,19 @@ const NAV = [
 let VIEW = 'dashboard';
 function doLogin(){
   const id=$('#lg-user').value.trim().toLowerCase(), pw=$('#lg-pass').value.trim();
+  if(CLOUD.url) return cloudLogin(id,pw);
   const u = S.users.find(x=>(String(x.login).toLowerCase()===id || String(x.nom).trim().toLowerCase()===id) && String(x.pass)===pw);
   if(!u){ $('#lg-err').style.display='block'; return; }
+  finishLogin(u);
+}
+function finishLogin(u){
   S.session = u; $('#lg-err').style.display='none'; $('#lg-pass').value='';
   $('#login').style.display='none'; $('#app').style.display='block';
   $('#who-name').textContent = u.nom; $('#who-av').textContent = (u.nom||'?')[0].toUpperCase(); $('#who-role').textContent = u.role==='admin'?'Administrateur':'Formateur';
   $('#lk-save').style.display = $('#lk-load').style.display = $('#lk-perso').style.display = u.role==='admin' ? '' : 'none';
   go(u.role==='admin' ? 'dashboard' : 'feuille');
 }
-function logout(){ syncTick(); SYNC.base=null; S.session=null; $('#app').style.display='none'; $('#login').style.display='flex'; }
+function logout(){ syncTick(); SYNC.base=null; S.session=null; CLOUD.token=''; $('#app').style.display='none'; $('#login').style.display='flex'; }
 function toggleSide(){ $('#side').classList.toggle('open'); }
 function go(k){
   if(!S.programme) S.programme = JSON.parse(JSON.stringify(PROG_SRC));
@@ -651,28 +655,28 @@ const SYNC = {base:null, queue:[], busy:false, msg:'⚪ En attente'};
 function syncSnapshot(){
   const snap = {};
   S.seances.forEach(s=>{ const g=grp(s.groupe); Object.entries(s.presences).forEach(([eid,v])=>{ const e=elv(eid); if(e) snap['p|'+s.groupe+'|'+eid+'|'+s.date] = {k:'pres', jour:g.jour, comp:!!g.compet, nom:e.nom, date:s.date, v}; }); });
-  S.eleves.filter(e=>e.statut!=='Externe').forEach(e=>{ ['T1','T2','T3'].forEach(t=>{ const o={k:'pay', trim:t, nom:e.nom, jour:e.jour};
+  if(isAdmin()) S.eleves.filter(e=>e.statut!=='Externe').forEach(e=>{ ['T1','T2','T3'].forEach(t=>{ const o={k:'pay', trim:t, nom:e.nom, jour:e.jour};
     ['insc','m1','m2','m3','comp'].forEach(c=>o[c]=cellSum(e.id,t,c)); if(t==='T1'){ o.mode=e.mode||''; o.rq=e.rq||''; o.type=e.type||''; }
     if(o.insc||o.m1||o.m2||o.m3||o.comp||o.mode||o.rq||o.type) snap['m|'+e.id+'|'+t]=o; }); });
   // tableaux complets (recopiés tels quels dans des onglets dédiés)
   const mcs=[...MC()].sort((a,b)=>a.debut.localeCompare(b.debut));
   const payRows=[]; mcs.forEach(m=>m.eleves.forEach(id=>{ const e=elv(id); if(!e) return; const du=mcDu(m.id,id), pa=mcPaye(m.id,id);
     const L=S.tx.filter(x=>x.trim===m.id&&x.col==='mc'&&x.eleve===id); payRows.push([m.nom, fmtD(m.debut)+' → '+fmtD(m.fin), e.nom, e.jour||'externe', du, pa, Math.max(0,du-pa), [...new Set(L.map(x=>x.mode+(x.chqNum?' n°'+x.chqNum:'')))].join(', '), (m.rem||{})[id]||'']); }));
-  snap['X|mcpay']={k:'table', file:'pay', tab:'PAIEMENT Master Class', rows:[['PAIEMENT MASTER CLASS VACANCES (lundi → vendredi, 9h → 12h)'],['Master class','Dates','Nom et Prénom','Jour','Prix','Payé','Reste','Mode de paiement','Remarque'],...payRows,['','','TT','',sum(payRows,r=>r[4]),sum(payRows,r=>r[5]),sum(payRows,r=>r[6])]], bold:[0,1,payRows.length+2]};
+  if(isAdmin()) snap['X|mcpay']={k:'table', file:'pay', tab:'PAIEMENT Master Class', rows:[['PAIEMENT MASTER CLASS VACANCES (lundi → vendredi, 9h → 12h)'],['Master class','Dates','Nom et Prénom','Jour','Prix','Payé','Reste','Mode de paiement','Remarque'],...payRows,['','','TT','',sum(payRows,r=>r[4]),sum(payRows,r=>r[5]),sum(payRows,r=>r[6])]], bold:[0,1,payRows.length+2]};
   const presRows=[['PRÉSENCE MASTER CLASS VACANCES (lundi → vendredi, 9h → 12h)']], bold=[0];
   mcs.forEach(m=>{ presRows.push([]); bold.push(presRows.length); presRows.push([m.nom+' · '+fmtD(m.debut)+' → '+fmtD(m.fin)]); bold.push(presRows.length); presRows.push(['N°','Nom et Prénom',...(m.dates||[]).map(d=>jourOf(d).slice(0,3)+' '+fmtD(d).slice(0,5)),'Total P','Total A']);
     m.eleves.forEach((id,i)=>{ const e=elv(id); if(!e) return; const pr=(m.pres||{})[id]||{}; const v=(m.dates||[]).map(d=>pr[d]||''); presRows.push([i+1,e.nom,...v,v.filter(x=>x==='P').length,v.filter(x=>x==='A').length]); }); });
   snap['X|mcpres']={k:'table', file:'pres', tab:'Présence Master Class', rows:presRows, bold};
   const elRows=[...S.eleves].filter(e=>e.statut!=='Abandon'&&e.statut!=='Externe').sort((a,b)=>JOURS.indexOf(a.jour)-JOURS.indexOf(b.jour)||a.nom.localeCompare(b.nom))
     .map((e,i)=>[i+1,e.nom,e.naissance||'',ageOf(e)||'',e.niveau||'',e.ancien||'',e.statut,e.parent||'',e.tel1||'',e.tel2||'',e.email||'',e.jour||'',e.groupe?gLabel(grp(e.groupe)):'']);
-  snap['X|eleves']={k:'table', file:'base', tab:'Élèves (site)', rows:[['ÉLÈVES '+anLabel()+' – coordonnées (mis à jour automatiquement par le site de gestion)'],['N°','Nom et Prénom','Naissance','Âge','Niveau','Ancien/Nouveau','Statut','Parent','Tél 1','Tél 2','Email','Jour','Groupe'],...elRows], bold:[0,1]};
-  S.caisse.filter(c=>c.compte==='academie'||c.compte==='projet'||c.compte==='masterclass').forEach(c=>{ snap['c|'+c.id]={k:'caisse', id:c.id, compte:c.compte, sens:c.sens, date:c.date, libelle:c.libelle, montant:+c.montant||0, rq:c.rq||''}; });
+  if(isAdmin()) snap['X|eleves']={k:'table', file:'base', tab:'Élèves (site)', rows:[['ÉLÈVES '+anLabel()+' – coordonnées (mis à jour automatiquement par le site de gestion)'],['N°','Nom et Prénom','Naissance','Âge','Niveau','Ancien/Nouveau','Statut','Parent','Tél 1','Tél 2','Email','Jour','Groupe'],...elRows], bold:[0,1]};
+  if(isAdmin()) S.caisse.filter(c=>c.compte==='academie'||c.compte==='projet'||c.compte==='masterclass').forEach(c=>{ snap['c|'+c.id]={k:'caisse', id:c.id, compte:c.compte, sens:c.sens, date:c.date, libelle:c.libelle, montant:+c.montant||0, rq:c.rq||''}; });
   return snap;
 }
 function syncInit(){ SYNC.base = syncSnapshot(); }
 function syncSetMsg(m){ SYNC.msg=m; const el=document.getElementById('syncinfo'); if(el) el.textContent=m; const s=document.getElementById('syncbadge'); if(s) s.textContent=m; }
 function syncTick(){
-  if(!S.session || !(S.sync||{}).url) return;
+  if(!S.session || !(CLOUD.url || (S.sync||{}).url)) return;
   if(!SYNC.base){ syncInit(); return; }
   const now = syncSnapshot(), ops=[];
   Object.keys(now).forEach(k=>{ if(JSON.stringify(now[k])!==JSON.stringify(SYNC.base[k])) ops.push(now[k]); });
@@ -683,11 +687,61 @@ function syncTick(){
 function syncFlush(){
   if(SYNC.busy || !SYNC.queue.length) return;
   const batch = SYNC.queue.splice(0, 300); SYNC.busy=true; syncSetMsg('⏳ Envoi de '+batch.length+' modification(s) vers Google Sheets…');
-  fetch(S.sync.url, {method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({annee:anLabel(), ops:batch})})
+  fetch(CLOUD.url||S.sync.url, {method:'POST', mode:'no-cors', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({annee:anLabel(), token:CLOUD.token, ops:batch})})
     .then(()=>{ SYNC.busy=false; syncSetMsg('✔ Synchronisé avec Google Sheets à '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})); if(SYNC.queue.length) setTimeout(syncFlush,500); })
     .catch(()=>{ SYNC.busy=false; SYNC.queue.unshift(...batch); syncSetMsg('⚠ Pas de connexion – nouvel essai dans 30 s'); setTimeout(syncFlush,30000); });
 }
-function syncAll(){ if(!confirm('Envoyer toutes les présences et tous les paiements vers Google Sheets ?')) return; const snap=syncSnapshot(); SYNC.base=snap; SYNC.queue.push(...Object.values(snap)); syncFlush(); toast(Object.keys(snap).length+' lignes envoyées'); }
+function syncAll(){ if(!(CLOUD.url||(S.sync||{}).url)) return toast('Aucun serveur configuré'); if(!confirm('Envoyer toutes les présences et tous les paiements vers Google Sheets ?')) return; const snap=syncSnapshot(); SYNC.base=snap; SYNC.queue.push(...Object.values(snap)); syncFlush(); toast(Object.keys(snap).length+' lignes envoyées'); }
+/* ===== MODE EN LIGNE (serveur Google privé) ===== */
+const CLOUD_DEFAULT='';
+const CLOUD={url:'', token:'', ver:0, busy:false, last:'', at:''};
+try{ CLOUD.url = localStorage.getItem('tunarco_cloud_url') || (CLOUD_DEFAULT.indexOf('http')===0?CLOUD_DEFAULT:''); }catch(e){ CLOUD.url = CLOUD_DEFAULT.indexOf('http')===0?CLOUD_DEFAULT:''; }
+async function cloudCall(body){ const r=await fetch(CLOUD.url,{method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify(body)}); return r.json(); }
+function cloudBadge(m){ const el=document.getElementById('autobadge'); if(el) el.textContent=m; }
+async function cloudLogin(id,pw){
+  const info=$('#lg-cloud'); $('#lg-err').style.display='none'; info.textContent='☁️ Connexion au serveur…';
+  let r; try{ r=await cloudCall({action:'login', login:id, pass:pw}); }catch(e){ info.textContent='⚠ Serveur injoignable (Internet ?)'; return; }
+  if(r.needInit){ info.textContent=''; return cloudInitForm(id,pw); }
+  if(r.error){ info.textContent=''; $('#lg-err').textContent=r.error; $('#lg-err').style.display='block'; return; }
+  cloudStart(r);
+}
+function cloudStart(r){
+  CLOUD.token=r.token; CLOUD.ver=r.version; applyLoaded(r.data); S.niveaux=NIVEAUX;
+  const u=S.users.find(x=>x.id===r.user.id)||r.user; $('#lg-cloud').textContent=''; $('#lg-init').style.display='none';
+  SYNC.base=null; finishLogin(u); CLOUD.last=dataJSON(); cloudBadge('☁️ En ligne');
+}
+function cloudInitForm(id,pw){
+  const b=$('#lg-init'); b.style.display='block';
+  b.innerHTML=`<div class="alert info small" style="display:block;margin-top:10px">☁️ <b>Le serveur en ligne est vide.</b><br>Choisissez votre fichier de sauvegarde <b>.json</b> (💾 Sauvegarder) et tapez le code d'initialisation pour y mettre vos données.</div>
+    <input type="file" id="init-file" accept=".json" style="width:100%;margin:6px 0"><input id="init-code" placeholder="Code d'initialisation" style="width:100%;margin-bottom:6px">
+    <button class="btn wide" id="init-go">Envoyer mes données sur le serveur</button>`;
+  $('#init-go').onclick=()=>{ const f=$('#init-file').files[0]; if(!f) return alert('Choisissez le fichier .json'); const rd=new FileReader();
+    rd.onload=async()=>{ let d; try{ d=JSON.parse(rd.result).data; }catch(e){ return alert('Fichier invalide'); }
+      $('#lg-cloud').textContent='☁️ Envoi des données…';
+      applyLoaded(d); applyPresSheet(); applyCleanup2(); applyPaySheet(); applyTarifs3(); applyPw1(); d=JSON.parse(dataJSON());
+      try{ const r=await cloudCall({action:'init', code:$('#init-code').value.trim(), login:id, pass:pw, data:d}); if(r.error){ $('#lg-cloud').textContent=''; return alert(r.error); } cloudStart(r); toast('Données envoyées sur le serveur ✔'); }catch(e){ $('#lg-cloud').textContent='⚠ Erreur réseau'; } };
+    rd.readAsText(f); };
+}
+async function cloudSave(){
+  if(!CLOUD.url||!CLOUD.token||CLOUD.busy||!S.session) return; const j=dataJSON(); if(j===CLOUD.last) return;
+  CLOUD.busy=true; cloudBadge('☁️ Enregistrement…');
+  try{ const r=await cloudCall({action:'save', token:CLOUD.token, base:CLOUD.ver, data:JSON.parse(j)});
+    if(r.error==='SESSION'){ cloudBadge('⚠ Session expirée'); alert('Votre connexion a expiré : reconnectez-vous.'); CLOUD.busy=false; return logout(); }
+    if(r.error){ cloudBadge('⚠ '+r.error); }
+    else if(r.conflict){ applyLoaded(r.data); CLOUD.ver=r.version; CLOUD.last=dataJSON(); render(); toast('⚠ Un autre utilisateur a modifié les données : votre dernière modification est peut-être à refaire.'); }
+    else { CLOUD.ver=r.version; CLOUD.last=j; CLOUD.at=new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); cloudBadge('☁️ Enregistré en ligne '+CLOUD.at); }
+  }catch(e){ cloudBadge('⚠ Hors ligne – nouvel essai…'); }
+  CLOUD.busy=false;
+}
+async function cloudPull(){
+  if(!CLOUD.token||CLOUD.busy||!S.session) return; if(dataJSON()!==CLOUD.last) return; if(document.getElementById('ov')?.classList.contains('show')) return;
+  try{ const r=await cloudCall({action:'get', token:CLOUD.token, since:CLOUD.ver}); if(r.error==='SESSION') return logout();
+    if(r.data){ const y=window.scrollY; applyLoaded(r.data); CLOUD.ver=r.version; CLOUD.last=dataJSON(); render(); window.scrollTo(0,y); } }catch(e){}
+}
+setInterval(cloudSave, 2000); setInterval(cloudPull, 15000);
+setTimeout(()=>{ const e=document.getElementById('lg-srv'); if(e&&CLOUD.url) e.textContent='☁️ Serveur en ligne configuré'; },0);
+function setCloudUrl(v){ v=v.trim(); try{ if(v) localStorage.setItem('tunarco_cloud_url',v); else localStorage.removeItem('tunarco_cloud_url'); }catch(e){} CLOUD.url=v; toast(v?'Adresse du serveur enregistrée – reconnectez-vous':'Mode en ligne désactivé'); }
+
 /* ===== Sauvegarde automatique dans le navigateur (garde les données d'une version du site à l'autre) ===== */
 const LS_KEY='tunarco_gestion_data', LS_BK='tunarco_gestion_bk_';
 const lsGet=k=>{ try{ return localStorage.getItem(k); }catch(e){ return null; } };
@@ -701,7 +755,7 @@ function autoSave(){
   if(!S.session) return; const j=dataJSON(); if(j===AUTO.last) return;
   AUTO.ok=lsSet(LS_KEY,j); AUTO.last=j; AUTO.at=new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
   if(AUTO.ok){ lsSet(LS_BK+TODAY,j); try{ Object.keys(localStorage).filter(k=>k.startsWith(LS_BK)).sort().slice(0,-10).forEach(k=>localStorage.removeItem(k)); }catch(e){} }
-  const el=document.getElementById('autobadge'); if(el) el.textContent = AUTO.ok?('💾 Enregistré '+AUTO.at):'⚠ Sauvegarde auto impossible';
+  const el=document.getElementById('autobadge'); if(el && !CLOUD.token) el.textContent = AUTO.ok?('💾 Enregistré '+AUTO.at):'⚠ Sauvegarde auto impossible';
 }
 setInterval(autoSave, 2000); window.addEventListener('beforeunload', autoSave);
 function backupsList(){ try{ return Object.keys(localStorage).filter(k=>k.startsWith(LS_BK)).sort().reverse(); }catch(e){ return []; } }
@@ -2241,7 +2295,12 @@ VIEWS.parametres = () => { setHead('Paramètres', 'Groupes, niveaux, jours féri
     <div class="small muted" style="margin-bottom:8px">Chaque année garde ses propres élèves, groupes, présences, paiements, caisse, compétitions et jours fériés. Le stock, les kits, les niveaux, le planning des cours et les formateurs sont communs à toutes les années.</div>
     <table><tr><th>Année</th><th class="num">Élèves</th><th class="num">Paiements</th><th class="num">Séances</th><th></th></tr>${allYears().map(y=>{ const d=y===S.annee?S:S.years[y]; return `<tr><td><b>${anLabel(y)}</b> ${y===S.annee?badge('ouverte','b-ok'):''}</td><td class="num">${d.eleves.length}</td><td class="num">${dt(sum(d.tx,x=>x.montant))}</td><td class="num">${d.seances.length}</td>
       <td style="white-space:nowrap">${y===S.annee?'':`<button class="btn sm g" onclick="switchYear(${y})">Ouvrir</button> <button class="btn sm r" onclick="delYear(${y})">🗑</button>`}</td></tr>`; }).join('')}</table></div>
-  <div class="card" style="border-left:5px solid var(--green)"><h3>🔄 Synchro Google Sheets (Paiements + Présences)</h3>
+  <div class="card" style="border-left:5px solid var(--purple)"><h3>☁️ Mode en ligne (données partagées + synchro Google Sheets)</h3>
+    <div class="small muted" style="margin-bottom:8px">Adresse de l'application Web « Tunarco serveur » (script Google). Une fois remplie, tout le monde se connecte sur les mêmes données, enregistrées dans votre Google Drive, et les fichiers Présence / Paiement / Base de données se mettent à jour tout seuls.</div>
+    <div class="toolbar"><input class="ein" style="flex:1;min-width:280px" placeholder="https://script.google.com/macros/s/…/exec" value="${h(CLOUD.url)}" onchange="setCloudUrl(this.value)">
+      <button class="btn sm gr" onclick="syncAll()" ${CLOUD.url?'':'disabled'}>⬆ Tout recopier dans les fichiers Excel</button></div>
+    <div class="small">${CLOUD.token?'🟢 Connecté au serveur · version '+CLOUD.ver:CLOUD.url?'🟡 Adresse enregistrée – déconnectez-vous puis reconnectez-vous':'⚪ Mode en ligne désactivé (données seulement dans ce navigateur)'}</div></div>
+  <div class="card" style="border-left:5px solid var(--green);${CLOUD.url?'display:none':''}"><h3>🔄 Synchro Google Sheets (Paiements + Présences)</h3>
     <div class="small muted" style="margin-bottom:8px">Collez ici l'adresse de l'application Web « Tunarco synchro » (script Google). Chaque P / A et chaque paiement est alors recopié automatiquement dans vos fichiers Presence_Academie et Paiement_Academie.</div>
     <div class="toolbar"><input class="ein" style="flex:1;min-width:280px" placeholder="https://script.google.com/macros/s/…/exec" value="${h((S.sync||{}).url||'')}" onchange="S.sync=S.sync||{};S.sync.url=this.value.trim();syncInit();render()">
       <button class="btn sm g" onclick="window.open(S.sync.url,'_blank')" ${(S.sync||{}).url?'':'disabled'}>Tester</button>
