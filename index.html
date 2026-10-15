@@ -495,6 +495,7 @@ const NAV = [
   {k:'dashboard', t:'📊 Accueil', admin:true},
   {k:'paiements', t:'💳 Paiements', admin:true},
   {k:'caisse', t:'💰 Caisse', admin:true},
+  {k:'charges', t:'📌 Charges fixes', admin:true},
   {k:'eleves', t:'📇 Coordonnées adhérents'},
   {k:'planning', t:'🗓️ Planning'},
   {k:'feuille', t:'📋 Présences'},
@@ -1214,6 +1215,69 @@ function mvt(sens, id){
     {k:'libelle',label:'Libellé',full:1,req:1},{k:'montant',label:'Montant (DT)',type:'number',req:1},{k:'rq',label:'RQ (remarque)'},
   ], c, fd => { fd.montant=+fd.montant; if(!(fd.montant>0)){toast('Montant invalide');return false;} if(id) Object.assign(c,fd); else S.caisse.push({id:uid('c'), sens, compte, ...fd}); });
 }
+
+/* ---------------- CHARGES FIXES (mensuelles / trimestrielles) – rangées dans S.tarifs (réservé admin) ---------------- */
+const CHG_DEF = [
+  ['Loyer local','Loyer',600,'M'],['Loyer maison','Loyer',700,'M'],['Mme Nassira','Autre dépense',1500,'M'],
+  ['Femme de ménage','Autre dépense',50,'M'],['Salaire Tarek','Salaire formateur',1100,'M'],['Salaire Hanan','Salaire formateur',1000,'M'],
+  ['Salaire Ikhlas','Salaire formateur',600,'M'],['Topnet (Internet)','Factures (STEG, SONEDE, Internet)',40,'M'],
+  ['Comptable','Autre dépense',550,'T'],['CNSS (selon déclaration, 1000 à 1200)','Autre dépense',1100,'T',1]];
+function CHG(){ const T=TDEF(); if(!Array.isArray(T.charges)) T.charges=CHG_DEF.map(([lib,cat,montant,freq,variable],i)=>({id:'ch'+(i+1), lib, cat, montant, freq, jour:15, mois:freq==='T'?'1,4,7,10':'', variable:variable?1:0, actif:1})); return T.charges; }
+let F_CH = {mois:''};
+const chMoisList = () => { const a=[]; for(let i=0;i<12;i++){ const m=(8+i)%12, y=AN_Y+(8+i>=12?1:0); a.push(y+'-'+String(m+1).padStart(2,'0')); } return a; };
+const chLabel = ym => MOIS_L[+ym.slice(5,7)-1]+' '+ym.slice(0,4);
+const chDue = (c,ym) => c.actif!==0 && (c.freq!=='T' || String(c.mois||'').split(/[ ,;]+/).map(Number).includes(+ym.slice(5,7)));
+const chPaid = (c,ym) => S.caisse.find(x=>x.refCharge===c.id && x.chMois===ym);
+VIEWS.charges = () => {
+  const L=chMoisList(); if(!F_CH.mois) F_CH.mois = L.includes(TODAY.slice(0,7)) ? TODAY.slice(0,7) : L[0];
+  const ym=F_CH.mois, all=CHG(), due=all.filter(c=>chDue(c,ym));
+  setHead('Charges fixes', 'Loyers, salaires, factures… à payer chaque mois (le 15) ou chaque trimestre · le paiement va directement dans la caisse');
+  const prev=sum(due,c=>+c.montant||0), paye=sum(due,c=>chPaid(c,ym)?.montant||0), nbR=due.filter(c=>!chPaid(c,ym)).length;
+  const mensuel=sum(all.filter(c=>c.actif!==0&&c.freq!=='T'),c=>+c.montant||0), trim=sum(all.filter(c=>c.actif!==0&&c.freq==='T'),c=>+c.montant||0);
+  const row = c => { const p=chPaid(c,ym), ech=ym+'-'+String(c.jour||15).padStart(2,'0'), late=!p && ech<TODAY;
+    return `<tr><td><b>${h(c.lib)}</b><div class="small muted">${h(c.cat||'')}${c.note?' · '+h(c.note):''}</div></td><td>${c.freq==='T'?'Trimestriel':'Mensuel'}</td><td>${fmtD(ech)}</td>
+      <td class="num">${dt(+c.montant||0)}${c.variable?' <span class="small muted">(à vérifier)</span>':''}</td>
+      <td>${p?`<span class="badge" style="background:#d9f2e3;color:#156b3a">✔ Payé ${dt(p.montant)} le ${fmtD(p.date)}</span>`:`<span class="badge" style="background:${late?'#fde2e2':'#fff3d6'};color:${late?'#b42318':'#8a5a00'}">${late?'⚠ En retard':'À payer'}</span>`}</td>
+      <td style="white-space:nowrap">${p?`<button class="btn sm g" onclick="chPay('${c.id}')">✏️ Paiement</button> <button class="btn sm r" onclick="chUnpay('${c.id}')">Annuler</button>`:`<button class="btn sm" onclick="chPay('${c.id}')">💵 Payer</button>`} <button class="btn sm g" title="Modifier la charge" onclick="chEdit('${c.id}')">⚙️</button></td></tr>`; };
+  return `<div class="toolbar"><select style="font-weight:600;min-width:200px" onchange="F_CH.mois=this.value;render()">${L.map(m=>`<option value="${m}" ${m===ym?'selected':''}>${chLabel(m)}</option>`).join('')}</select>
+    <span class="sp"></span><button class="btn" onclick="chEdit()">+ Ajouter une charge</button></div>
+  <div class="grid kpis">
+    <div class="kpi" style="border-left-color:var(--bad)"><div class="l">À payer en ${chLabel(ym).toLowerCase()}</div><div class="v">${dt(prev)}</div><div class="s">${due.length} charge(s)</div></div>
+    <div class="kpi g"><div class="l">Déjà payé</div><div class="v">${dt(paye)}</div></div>
+    <div class="kpi b"><div class="l">Reste à payer</div><div class="v" style="color:${nbR?'var(--bad)':'var(--green)'}">${dt(Math.max(0,prev-paye))}</div><div class="s">${nbR} charge(s) non payée(s)</div></div>
+    <div class="kpi p"><div class="l">Coût moyen par mois</div><div class="v">${dt(Math.round(mensuel+trim/3))}</div><div class="s">${dt(mensuel)} mensuel + ${dt(trim)} / trimestre</div></div>
+  </div>
+  <div class="card tw" style="padding:0"><table><tr><th>Charge</th><th>Fréquence</th><th>Échéance</th><th class="num">Montant prévu</th><th>État</th><th></th></tr>
+    ${due.map(row).join('')||'<tr><td colspan="6" class="empty">Aucune charge ce mois-ci.</td></tr>'}</table></div>
+  <div class="card"><h3>Toutes les charges</h3><p class="small muted">Cliquez sur ⚙️ pour modifier le libellé, le montant, le jour ou les mois. Les charges trimestrielles ne sont demandées que les mois indiqués.</p>
+    <table><tr><th>Libellé</th><th>Fréquence</th><th class="num">Montant</th><th>Jour</th><th>Mois (trimestriel)</th><th></th></tr>
+    ${all.map(c=>`<tr style="${c.actif===0?'opacity:.5':''}"><td>${h(c.lib)}${c.actif===0?' <span class="small muted">(arrêtée)</span>':''}</td><td>${c.freq==='T'?'Trimestriel':'Mensuel'}</td><td class="num">${dt(+c.montant||0)}</td><td>${c.jour||15}</td><td>${c.freq==='T'?h((c.mois||'').split(/[ ,;]+/).filter(Boolean).map(n=>MOIS_L[+n-1]?.toLowerCase()||n).join(', ')):'—'}</td><td><button class="btn sm g" onclick="chEdit('${c.id}')">⚙️ Modifier</button></td></tr>`).join('')}</table></div>`;
+};
+function chEdit(id){
+  const L=CHG(), c0=id?L.find(x=>x.id===id):null;
+  const v = c0 ? {...c0, actif:c0.actif===0?'0':'1', variable:c0.variable?'1':'0'} : {freq:'M', jour:15, cat:'Autre dépense', mois:'1,4,7,10', actif:'1', variable:'0'};
+  formModal(c0?'Modifier la charge':'Nouvelle charge', [
+    {k:'lib',label:'Libellé',full:1,req:1},{k:'montant',label:'Montant (DT)',type:'number',req:1},
+    {k:'freq',label:'Fréquence',type:'select',options:[['M','Mensuel (chaque mois)'],['T','Trimestriel']]},
+    {k:'jour',label:'Jour de paiement',type:'number'},{k:'mois',label:'Mois de paiement si trimestriel (ex : 1,4,7,10)'},
+    {k:'cat',label:'Catégorie (caisse)',type:'select',options:CAT_OUT},
+    {k:'variable',label:'Montant variable ?',type:'select',options:[['0','Non, fixe'],['1','Oui, à vérifier']]},
+    {k:'actif',label:'État',type:'select',options:[['1','Active'],['0','Arrêtée']]},{k:'note',label:'Remarque',full:1},
+  ], v, fd => { fd.montant=+fd.montant||0; fd.jour=Math.min(28,Math.max(1,+fd.jour||15)); fd.actif=+fd.actif; fd.variable=+fd.variable;
+    if(c0) Object.assign(c0,fd); else L.push({id:uid('ch'),...fd}); },
+  c0?`<button type="button" class="btn r" style="margin-right:auto" onclick="if(confirm('Supprimer cette charge ? (les paiements déjà faits restent dans la caisse)')){TDEF().charges=CHG().filter(x=>x.id!=='${c0.id}');closeModal();render();}">Supprimer</button>`:'');
+}
+function chPay(id){
+  const c=CHG().find(x=>x.id===id), ym=F_CH.mois, p=chPaid(c,ym);
+  const v = p ? {date:p.date, montant:p.montant, rq:p.rq||''} : {date:TODAY.slice(0,7)===ym?TODAY:ym+'-'+String(c.jour||15).padStart(2,'0'), montant:c.montant, rq:''};
+  formModal(`${p?'Modifier le paiement':'Payer'} – ${c.lib} (${chLabel(ym).toLowerCase()})`, [
+    {k:'date',label:'Date du paiement',type:'date',req:1},{k:'montant',label:'Montant payé (DT)',type:'number',req:1},
+    {k:'rq',label:'Mode / remarque (espèces, chèque n°…)',full:1}], v,
+  fd => { fd.montant=+fd.montant; if(!(fd.montant>0)){toast('Montant invalide');return false;}
+    const lib=`${c.lib} – ${chLabel(ym).toLowerCase()}`;
+    if(p) Object.assign(p,fd,{libelle:lib}); else S.caisse.push({id:uid('c'), sens:'out', compte:'academie', cat:c.cat||'Autre dépense', libelle:lib, refCharge:c.id, chMois:ym, ...fd}); });
+}
+function chUnpay(id){ const c=CHG().find(x=>x.id===id), p=chPaid(c,F_CH.mois); if(!p||!confirm('Annuler ce paiement ? (il sera retiré de la caisse)')) return; S.caisse=S.caisse.filter(x=>x!==p); render(); toast('Paiement annulé'); }
 
 /* ---------------- ÉLÈVES ---------------- */
 let F_EL = {q:'', jour:'', statut:'Actif', v:'lab', mc:''};
