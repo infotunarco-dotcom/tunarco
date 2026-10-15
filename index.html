@@ -495,7 +495,8 @@ const NAV = [
   {k:'dashboard', t:'📊 Accueil', admin:true},
   {k:'paiements', t:'💳 Paiements', admin:true},
   {k:'caisse', t:'💰 Caisse', admin:true},
-  {k:'charges', t:'📌 Charges fixes', admin:true},
+  {k:'charges', t:'📌 Charges', admin:true},
+  {k:'achats', t:'🛒 Achats', admin:true},
   {k:'eleves', t:'📇 Coordonnées adhérents'},
   {k:'planning', t:'🗓️ Planning'},
   {k:'feuille', t:'📋 Présences'},
@@ -1231,38 +1232,35 @@ const chPaid = (c,ym) => S.caisse.find(x=>x.refCharge===c.id && x.chMois===ym);
 VIEWS.charges = () => {
   const L=chMoisList(); if(!F_CH.mois) F_CH.mois = L.includes(TODAY.slice(0,7)) ? TODAY.slice(0,7) : L[0];
   const ym=F_CH.mois, all=CHG(), due=all.filter(c=>chDue(c,ym));
-  setHead('Charges fixes', 'Loyers, salaires, factures… à payer chaque mois (le 15) ou chaque trimestre · le paiement va directement dans la caisse');
-  const prev=sum(due,c=>+c.montant||0), paye=sum(due,c=>chPaid(c,ym)?.montant||0), nbR=due.filter(c=>!chPaid(c,ym)).length;
-  const mensuel=sum(all.filter(c=>c.actif!==0&&c.freq!=='T'),c=>+c.montant||0), trim=sum(all.filter(c=>c.actif!==0&&c.freq==='T'),c=>+c.montant||0);
-  const row = c => { const p=chPaid(c,ym), ech=ym+'-'+String(c.jour||15).padStart(2,'0'), late=!p && ech<TODAY;
-    return `<tr><td><b>${h(c.lib)}</b><div class="small muted">${h(c.cat||'')}${c.note?' · '+h(c.note):''}</div></td><td>${c.freq==='T'?'Trimestriel':'Mensuel'}</td><td>${fmtD(ech)}</td>
-      <td class="num">${dt(+c.montant||0)}${c.variable?' <span class="small muted">(à vérifier)</span>':''}</td>
-      <td>${p?`<span class="badge" style="background:#d9f2e3;color:#156b3a">✔ Payé ${dt(p.montant)} le ${fmtD(p.date)}</span>`:`<span class="badge" style="background:${late?'#fde2e2':'#fff3d6'};color:${late?'#b42318':'#8a5a00'}">${late?'⚠ En retard':'À payer'}</span>`}</td>
-      <td style="white-space:nowrap">${p?`<button class="btn sm g" onclick="chPay('${c.id}')">✏️ Paiement</button> <button class="btn sm r" onclick="chUnpay('${c.id}')">Annuler</button>`:`<button class="btn sm" onclick="chPay('${c.id}')">💵 Payer</button>`} <button class="btn sm g" title="Modifier la charge" onclick="chEdit('${c.id}')">⚙️</button></td></tr>`; };
-  return `<div class="toolbar"><select style="font-weight:600;min-width:200px" onchange="F_CH.mois=this.value;render()">${L.map(m=>`<option value="${m}" ${m===ym?'selected':''}>${chLabel(m)}</option>`).join('')}</select>
-    <span class="sp"></span><button class="btn" onclick="chEdit()">+ Ajouter une charge</button></div>
+  setHead('Charges du mois', 'Loyers, salaires, factures…');
+  const prev=sum(due,c=>+c.montant||0), paye=sum(due,c=>chPaid(c,ym)?.montant||0), reste=due.filter(c=>!chPaid(c,ym));
+  const row = c => { const p=chPaid(c,ym);
+    return `<tr style="${p?'background:#f3fbf6':''}"><td style="font-size:15px"><b>${h(c.lib)}</b>${c.freq==='T'?' <span class="small muted">(trimestre)</span>':''}${c.variable?'<div class="small" style="color:#8a5a00">Montant à vérifier</div>':''}</td>
+      <td class="num" style="font-size:15px"><b>${dt(p?p.montant:+c.montant||0)}</b></td>
+      <td>${p?`<span style="color:#156b3a;font-weight:700">✔ Payé le ${fmtD(p.date)}</span>`:`<span style="color:#b42318;font-weight:700">✖ Pas encore payé</span>`}</td>
+      <td style="white-space:nowrap;text-align:right">${p?`<button class="btn sm r" onclick="chUnpay('${c.id}')">Annuler</button>`:`<button class="btn" onclick="chPay('${c.id}')">💵 Payer</button>`} <button class="btn sm g" onclick="chEdit('${c.id}')">✏️ Modifier</button></td></tr>`; };
+  return `<div class="alert info small" style="display:block">👉 Choisissez le mois, puis cliquez sur <b>💵 Payer</b> quand vous payez une charge. Le montant passe tout seul dans la <b>caisse</b> (dépenses).</div>
+  <div class="toolbar"><b>Mois :</b> <select style="font-weight:700;min-width:200px;font-size:15px" onchange="F_CH.mois=this.value;render()">${L.map(m=>`<option value="${m}" ${m===ym?'selected':''}>${chLabel(m)}</option>`).join('')}</select>
+    <span class="sp"></span><button class="btn g" onclick="chEdit()">+ Ajouter une charge</button></div>
   <div class="grid kpis">
-    <div class="kpi" style="border-left-color:var(--bad)"><div class="l">À payer en ${chLabel(ym).toLowerCase()}</div><div class="v">${dt(prev)}</div><div class="s">${due.length} charge(s)</div></div>
+    <div class="kpi"><div class="l">Total à payer ce mois</div><div class="v">${dt(prev)}</div></div>
     <div class="kpi g"><div class="l">Déjà payé</div><div class="v">${dt(paye)}</div></div>
-    <div class="kpi b"><div class="l">Reste à payer</div><div class="v" style="color:${nbR?'var(--bad)':'var(--green)'}">${dt(Math.max(0,prev-paye))}</div><div class="s">${nbR} charge(s) non payée(s)</div></div>
-    <div class="kpi p"><div class="l">Coût moyen par mois</div><div class="v">${dt(Math.round(mensuel+trim/3))}</div><div class="s">${dt(mensuel)} mensuel + ${dt(trim)} / trimestre</div></div>
+    <div class="kpi" style="border-left-color:var(--bad)"><div class="l">Reste à payer</div><div class="v" style="color:${reste.length?'var(--bad)':'var(--green)'}">${dt(Math.max(0,prev-paye))}</div><div class="s">${reste.length?reste.length+' charge(s)':'Tout est payé ✔'}</div></div>
   </div>
-  <div class="card tw" style="padding:0"><table><tr><th>Charge</th><th>Fréquence</th><th>Échéance</th><th class="num">Montant prévu</th><th>État</th><th></th></tr>
-    ${due.map(row).join('')||'<tr><td colspan="6" class="empty">Aucune charge ce mois-ci.</td></tr>'}</table></div>
-  <div class="card"><h3>Toutes les charges</h3><p class="small muted">Cliquez sur ⚙️ pour modifier le libellé, le montant, le jour ou les mois. Les charges trimestrielles ne sont demandées que les mois indiqués.</p>
-    <table><tr><th>Libellé</th><th>Fréquence</th><th class="num">Montant</th><th>Jour</th><th>Mois (trimestriel)</th><th></th></tr>
-    ${all.map(c=>`<tr style="${c.actif===0?'opacity:.5':''}"><td>${h(c.lib)}${c.actif===0?' <span class="small muted">(arrêtée)</span>':''}</td><td>${c.freq==='T'?'Trimestriel':'Mensuel'}</td><td class="num">${dt(+c.montant||0)}</td><td>${c.jour||15}</td><td>${c.freq==='T'?h((c.mois||'').split(/[ ,;]+/).filter(Boolean).map(n=>MOIS_L[+n-1]?.toLowerCase()||n).join(', ')):'—'}</td><td><button class="btn sm g" onclick="chEdit('${c.id}')">⚙️ Modifier</button></td></tr>`).join('')}</table></div>`;
+  <div class="card tw" style="padding:0"><table><tr><th>Charge</th><th class="num">Montant</th><th>Payé ?</th><th></th></tr>
+    ${due.map(row).join('')||'<tr><td colspan="4" class="empty">Aucune charge ce mois-ci.</td></tr>'}</table></div>
+  <div class="small muted">Les charges du trimestre (comptable, CNSS) apparaissent seulement en janvier, avril, juillet et octobre. Pour changer : ✏️ Modifier.</div>`;
 };
 function chEdit(id){
   const L=CHG(), c0=id?L.find(x=>x.id===id):null;
   const v = c0 ? {...c0, actif:c0.actif===0?'0':'1', variable:c0.variable?'1':'0'} : {freq:'M', jour:15, cat:'Autre dépense', mois:'1,4,7,10', actif:'1', variable:'0'};
   formModal(c0?'Modifier la charge':'Nouvelle charge', [
     {k:'lib',label:'Libellé',full:1,req:1},{k:'montant',label:'Montant (DT)',type:'number',req:1},
-    {k:'freq',label:'Fréquence',type:'select',options:[['M','Mensuel (chaque mois)'],['T','Trimestriel']]},
-    {k:'jour',label:'Jour de paiement',type:'number'},{k:'mois',label:'Mois de paiement si trimestriel (ex : 1,4,7,10)'},
-    {k:'cat',label:'Catégorie (caisse)',type:'select',options:CAT_OUT},
-    {k:'variable',label:'Montant variable ?',type:'select',options:[['0','Non, fixe'],['1','Oui, à vérifier']]},
-    {k:'actif',label:'État',type:'select',options:[['1','Active'],['0','Arrêtée']]},{k:'note',label:'Remarque',full:1},
+    {k:'freq',label:'Quand ?',type:'select',options:[['M','Chaque mois'],['T','Chaque trimestre']]},
+    {k:'mois',label:'Si trimestre : numéros des mois (1=janv., 4=avril, 7=juil., 10=oct.)'},
+    {k:'cat',label:'Catégorie dans la caisse',type:'select',options:CAT_OUT},
+    {k:'variable',label:'Le montant change ?',type:'select',options:[['0','Non, toujours le même'],['1','Oui, à vérifier à chaque fois']]},
+    {k:'actif',label:'État',type:'select',options:[['1','Active'],['0','Arrêtée (ne plus demander)']]},{k:'note',label:'Remarque',full:1},
   ], v, fd => { fd.montant=+fd.montant||0; fd.jour=Math.min(28,Math.max(1,+fd.jour||15)); fd.actif=+fd.actif; fd.variable=+fd.variable;
     if(c0) Object.assign(c0,fd); else L.push({id:uid('ch'),...fd}); },
   c0?`<button type="button" class="btn r" style="margin-right:auto" onclick="if(confirm('Supprimer cette charge ? (les paiements déjà faits restent dans la caisse)')){TDEF().charges=CHG().filter(x=>x.id!=='${c0.id}');closeModal();render();}">Supprimer</button>`:'');
@@ -1272,12 +1270,112 @@ function chPay(id){
   const v = p ? {date:p.date, montant:p.montant, rq:p.rq||''} : {date:TODAY.slice(0,7)===ym?TODAY:ym+'-'+String(c.jour||15).padStart(2,'0'), montant:c.montant, rq:''};
   formModal(`${p?'Modifier le paiement':'Payer'} – ${c.lib} (${chLabel(ym).toLowerCase()})`, [
     {k:'date',label:'Date du paiement',type:'date',req:1},{k:'montant',label:'Montant payé (DT)',type:'number',req:1},
-    {k:'rq',label:'Mode / remarque (espèces, chèque n°…)',full:1}], v,
+    {k:'rq',label:'Comment ? (espèces, chèque n°…)',full:1}], v,
   fd => { fd.montant=+fd.montant; if(!(fd.montant>0)){toast('Montant invalide');return false;}
     const lib=`${c.lib} – ${chLabel(ym).toLowerCase()}`;
     if(p) Object.assign(p,fd,{libelle:lib}); else S.caisse.push({id:uid('c'), sens:'out', compte:'academie', cat:c.cat||'Autre dépense', libelle:lib, refCharge:c.id, chMois:ym, ...fd}); });
 }
 function chUnpay(id){ const c=CHG().find(x=>x.id===id), p=chPaid(c,F_CH.mois); if(!p||!confirm('Annuler ce paiement ? (il sera retiré de la caisse)')) return; S.caisse=S.caisse.filter(x=>x!==p); render(); toast('Paiement annulé'); }
+
+/* ---------------- MOUVEMENTS DE STOCK (date d'entrée / de sortie) ---------------- */
+function stkMove(s, t, q, d, note, ach){ q=+q||0; if(!s||!q) return; s.mv=s.mv||[]; s.mv.push({id:uid('m'), t, q, d:d||TODAY, note:note||'', ach:ach||''});
+  if(t==='in') s.init=(s.init||0)+q; else s.sortie=(s.sortie||0)+q; s.qte=Math.max(0,(s.init||0)-(s.sortie||0)); }
+const stkLast = (s,t) => (s.mv||[]).filter(m=>m.t===t).map(m=>m.d).sort().pop()||'';
+function stkMvModal(id, t){
+  const s=stk(id);
+  formModal((t==='in'?'📥 Entrée en stock – ':'📤 Sortie du stock – ')+s.nom, [
+    {k:'q',label:'Quantité',type:'number',req:1},{k:'d',label:t==='in'?'Date d\'entrée':'Date de sortie',type:'date',req:1},
+    {k:'note',label:t==='in'?'D\'où ? (fournisseur, don…)':'Pour quoi / pour qui ? (groupe, robot, compétition…)',full:1}], {q:1, d:TODAY},
+  fd => { const q=+fd.q; if(!(q>0)){toast('Quantité invalide');return false;} if(t==='out' && q>(s.init||0)-(s.sortie||0) && !confirm('Il ne reste que '+((s.init||0)-(s.sortie||0))+' en stock. Continuer ?')) return false; stkMove(s,t,q,fd.d,fd.note); });
+}
+function stkHist(id){
+  const s=stk(id), L=[...(s.mv||[])].sort((a,b)=>b.d.localeCompare(a.d));
+  openModal(mHead('🕘 Historique – '+h(s.nom)) + `<div class="small muted" style="margin-bottom:8px">Réf. ${h(s.ref)} · en stock : <b>${(s.init||0)-(s.sortie||0)}</b></div>
+    <div class="tw"><table><tr><th>Date</th><th>Mouvement</th><th class="num">Qté</th><th>Remarque</th><th></th></tr>
+    ${L.map(m=>`<tr><td>${fmtD(m.d)}</td><td>${m.t==='in'?'<b style="color:var(--green)">📥 Entrée</b>':'<b style="color:var(--bad)">📤 Sortie</b>'}</td><td class="num"><b>${m.q}</b></td><td class="small">${h(m.note||'')}</td>
+      <td><button class="btn sm r" title="Supprimer ce mouvement" onclick="stkMvDel('${s.id}','${m.id}')">🗑</button></td></tr>`).join('')||'<tr><td colspan="5" class="empty">Aucun mouvement enregistré.</td></tr>'}</table></div>
+    <div class="mfoot"><button class="btn g" onclick="closeModal()">Fermer</button></div>`);
+}
+function stkMvDel(sid, mid){ const s=stk(sid), m=(s.mv||[]).find(x=>x.id===mid); if(!m||!confirm('Supprimer ce mouvement ? (la quantité est corrigée)')) return;
+  if(m.t==='in') s.init=Math.max(0,(s.init||0)-m.q); else s.sortie=Math.max(0,(s.sortie||0)-m.q); s.qte=Math.max(0,(s.init||0)-(s.sortie||0)); s.mv=s.mv.filter(x=>x!==m); render(); stkHist(sid); }
+
+/* ---------------- ACHATS FOURNISSEURS (rangés dans S.tarifs : réservé admin) ---------------- */
+const ACH = () => { const T=TDEF(); if(!Array.isArray(T.achats)) T.achats=[]; return T.achats; };
+let F_AC = {f:''}, AE = null;
+const achCaisse = a => S.caisse.find(x=>x.refAchat===a.id);
+VIEWS.achats = () => {
+  setHead('Achats', 'Fournisseurs · BL / factures · payé ou non · ajouté au stock ou non');
+  let L=[...ACH()].sort((a,b)=>b.date.localeCompare(a.date));
+  const nonPaye=L.filter(a=>!achCaisse(a)), nonStock=L.filter(a=>(a.items||[]).length && !a.stocked);
+  if(F_AC.f==='np') L=nonPaye; if(F_AC.f==='ns') L=nonStock;
+  const f=(k,l)=>`<button class="${F_AC.f===k?'on':''}" onclick="F_AC.f='${k}';render()">${l}</button>`;
+  return `<div class="alert info small" style="display:block">👉 Cliquez sur <b>+ Nouvel achat</b> et remplissez le BL ou la facture. Quand vous payez : <b>💵 Payer</b> (va dans la caisse). Quand les composants arrivent : <b>📥 Mettre au stock</b>.</div>
+  <div class="toolbar"><div class="tabs" style="margin:0">${f('','Tous')}${f('np','Non payés ('+nonPaye.length+')')}${f('ns','Pas encore au stock ('+nonStock.length+')')}</div><span class="sp"></span><button class="btn" onclick="achEdit()">+ Nouvel achat</button></div>
+  <div class="grid kpis">
+    <div class="kpi"><div class="l">Total des achats</div><div class="v">${dt(sum(ACH(),a=>+a.montant||0))}</div><div class="s">${ACH().length} achat(s)</div></div>
+    <div class="kpi" style="border-left-color:var(--bad)"><div class="l">Reste à payer aux fournisseurs</div><div class="v" style="color:${nonPaye.length?'var(--bad)':'var(--green)'}">${dt(sum(nonPaye,a=>+a.montant||0))}</div><div class="s">${nonPaye.length} non payé(s)</div></div>
+    <div class="kpi o"><div class="l">Pas encore au stock</div><div class="v">${nonStock.length}</div></div>
+  </div>
+  <div class="card tw" style="padding:0"><table><tr><th>Date</th><th>Fournisseur</th><th>BL / Facture</th><th class="num">Montant</th><th>Payé ?</th><th>Au stock ?</th><th></th></tr>
+    ${L.map(a=>{ const p=achCaisse(a), n=(a.items||[]).length; return `<tr><td>${fmtD(a.date)}</td><td><b>${h(a.four||'')}</b>${n?`<div class="small muted">${n} composant(s)</div>`:''}</td><td>${h(a.doc||'')} ${a.num?'<b>N° '+h(a.num)+'</b>':''}</td><td class="num"><b>${dt(+a.montant||0)}</b></td>
+      <td>${p?`<span style="color:#156b3a;font-weight:700">✔ Payé le ${fmtD(p.date)}</span>`:`<button class="btn sm" onclick="achPay('${a.id}')">💵 Payer</button>`}</td>
+      <td>${!n?'<span class="muted">—</span>':a.stocked?`<span style="color:#156b3a;font-weight:700">✔ Au stock</span>`:`<button class="btn sm o" onclick="achStock('${a.id}')">📥 Mettre au stock</button>`}</td>
+      <td style="white-space:nowrap"><button class="btn sm g" onclick="achEdit('${a.id}')">✏️ Modifier</button></td></tr>`; }).join('')||'<tr><td colspan="7" class="empty">Aucun achat.</td></tr>'}</table></div>`;
+};
+function achEdit(id){
+  const a = id ? ACH().find(x=>x.id===id) : null;
+  AE = a ? {...a, items:(a.items||[]).map(i=>({...i}))} : {date:TODAY, four:'', doc:'Facture', num:'', montant:'', note:'', items:[], payer:'0', stocker:'1', mode:'Espèces'};
+  achModal();
+}
+function achModal(){
+  const four=[...new Set(ACH().map(a=>a.four).filter(Boolean))];
+  const opts = sel => `<option value="">— nouvel article —</option>`+[...S.stock].sort((a,b)=>String(a.nom).localeCompare(String(b.nom))).map(s=>`<option value="${s.id}" ${s.id===sel?'selected':''}>${h(s.nom)} (${h(s.ref)})</option>`).join('');
+  const tot = sum(AE.items, i=>(+i.q||0)*(+i.prix||0)), isNew=!AE.id, locked=AE.stocked;
+  openModal(mHead(isNew?'🛒 Nouvel achat':'✏️ Modifier l\'achat') + `<div class="form">
+    <label>Date<input type="date" value="${AE.date}" onchange="AE.date=this.value"></label>
+    <label>Fournisseur<input list="dl-four" value="${h(AE.four)}" oninput="AE.four=this.value" placeholder="ex : Tunisia Robotics"><datalist id="dl-four">${four.map(x=>`<option value="${h(x)}">`).join('')}</datalist></label>
+    <label>Document<select onchange="AE.doc=this.value">${['Facture','BL (bon de livraison)','Ticket','Autre'].map(x=>`<option ${AE.doc===x?'selected':''}>${x}</option>`).join('')}</select></label>
+    <label>N° du BL / facture<input value="${h(AE.num||'')}" oninput="AE.num=this.value"></label>
+    <label>Montant total (DT)<input type="number" step="any" min="0" value="${AE.montant}" oninput="AE.montant=this.value" placeholder="${tot?tot.toFixed(3):''}"></label>
+    <label>Remarque<input value="${h(AE.note||'')}" oninput="AE.note=this.value"></label>
+    ${isNew?`<label>Déjà payé ?<select onchange="AE.payer=this.value;achModal()"><option value="0" ${AE.payer!=='1'?'selected':''}>Non, pas encore</option><option value="1" ${AE.payer==='1'?'selected':''}>Oui, payé aujourd'hui</option></select></label>
+      ${AE.payer==='1'?`<label>Comment ?<select onchange="AE.mode=this.value">${MODES.map(m=>`<option ${AE.mode===m?'selected':''}>${h(m)}</option>`).join('')}</select></label>`:''}`:''}
+    <div class="sec">Composants achetés (facultatif)${locked?' – déjà mis au stock':''}</div></div>
+    <div class="tw"><table class="small"><tr><th>Article</th><th class="num">Quantité</th><th class="num">Prix unitaire</th><th class="num">Total</th><th></th></tr>
+      ${AE.items.map((i,ii)=>`<tr><td><select ${locked?'disabled':''} style="max-width:260px" onchange="AE.items[${ii}].sid=this.value;if(this.value&&!AE.items[${ii}].prix)AE.items[${ii}].prix=stk(this.value).prix||0;achModal()">${opts(i.sid)}</select>${!i.sid?`<input ${locked?'disabled':''} placeholder="Nom du nouvel article" value="${h(i.nom||'')}" oninput="AE.items[${ii}].nom=this.value" style="margin-top:4px;width:100%">`:''}</td>
+        <td class="num"><input ${locked?'disabled':''} type="number" min="0" value="${i.q}" style="width:70px" onchange="AE.items[${ii}].q=+this.value;achModal()"></td>
+        <td class="num"><input type="number" min="0" step="any" value="${i.prix}" style="width:80px" onchange="AE.items[${ii}].prix=+this.value;achModal()"></td>
+        <td class="num">${dt((+i.q||0)*(+i.prix||0))}</td><td>${locked?'':`<button class="btn sm r" onclick="AE.items.splice(${ii},1);achModal()">✕</button>`}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Aucun composant (ex : achat de service, carburant…)</td></tr>'}
+      ${tot?`<tr class="tot"><td>Total des composants</td><td></td><td></td><td class="num">${dt(tot)}</td><td></td></tr>`:''}</table></div>
+    <div class="toolbar" style="margin-top:8px">${locked?'':`<button class="btn sm g" onclick="AE.items.push({sid:'',nom:'',q:1,prix:0});achModal()">+ Ajouter un composant</button>`}
+      ${isNew&&AE.items.length?`<label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" ${AE.stocker==='1'?'checked':''} onchange="AE.stocker=this.checked?'1':'0'"> Ajouter ces composants au stock maintenant</label>`:''}</div>
+    <div class="mfoot">${AE.id?`<button class="btn r" style="margin-right:auto" onclick="achDel('${AE.id}')">Supprimer</button>`:''}<button class="btn g" onclick="closeModal()">Annuler</button><button class="btn" onclick="achSave()">Enregistrer</button></div>`, true);
+}
+function achSave(){
+  if(!String(AE.four).trim()) return toast('Tapez le nom du fournisseur');
+  const tot=sum(AE.items,i=>(+i.q||0)*(+i.prix||0)); const montant=+AE.montant||tot; if(!(montant>0)) return toast('Tapez le montant');
+  if(AE.items.some(i=>!i.sid&&!String(i.nom||'').trim())) return toast('Choisissez ou tapez le nom de chaque composant');
+  const data={date:AE.date, four:AE.four.trim(), doc:AE.doc, num:String(AE.num||'').trim(), montant, note:AE.note||'', items:AE.items.map(i=>({sid:i.sid||'', nom:i.nom||'', q:+i.q||0, prix:+i.prix||0}))};
+  let a; if(AE.id){ a=ACH().find(x=>x.id===AE.id); Object.assign(a,data); const c=achCaisse(a); if(c){ c.montant=montant; c.libelle=achLib(a); } }
+  else { a={id:uid('a'), ...data, stocked:0}; ACH().push(a); if(AE.payer==='1') achPayNow(a, TODAY, AE.mode); if(AE.stocker==='1' && a.items.length) achToStock(a); }
+  closeModal(); render(); toast('Achat enregistré ✔');
+}
+const achLib = a => `Achat ${a.four}${a.num?' – '+(a.doc||'').split(' ')[0]+' N° '+a.num:''}`;
+function achPayNow(a, date, mode){ S.caisse.push({id:uid('c'), sens:'out', compte:'academie', cat:'Achat matériel', libelle:achLib(a), montant:+a.montant||0, date, rq:mode||'', refAchat:a.id}); }
+function achPay(id){ const a=ACH().find(x=>x.id===id);
+  formModal('💵 Payer – '+a.four+' ('+dt(+a.montant||0)+')', [{k:'date',label:'Date du paiement',type:'date',req:1},{k:'mode',label:'Comment ?',type:'select',options:MODES},{k:'montant',label:'Montant payé (DT)',type:'number',req:1}],
+  {date:TODAY, mode:'Espèces', montant:a.montant}, fd => { a.montant=+fd.montant||a.montant; achPayNow(a, fd.date, fd.mode); }); }
+function achToStock(a){
+  a.items.forEach(i=>{ let s=i.sid?stk(i.sid):null;
+    if(!s){ s={id:uid('st'), nom:i.nom.trim(), cat:catOf(i.nom), prix:i.prix||0, type:'projet', qte:0, panne:0, seuil:0, init:0, sortie:0, catOk:1}; s.ref=genRef(s.nom); S.stock.push(s); i.sid=s.id; }
+    if(i.prix) s.prix=i.prix; stkMove(s,'in',i.q,a.date,`Achat ${a.four}${a.num?' N° '+a.num:''}`,a.id); });
+  a.stocked=1;
+}
+function achStock(id){ const a=ACH().find(x=>x.id===id); if(!confirm('Ajouter les '+a.items.length+' composant(s) de cet achat au stock ?')) return; achToStock(a); render(); toast('Composants ajoutés au stock ✔'); }
+function achDel(id){ const a=ACH().find(x=>x.id===id); if(!confirm('Supprimer cet achat ?'+(achCaisse(a)?' (le paiement sera retiré de la caisse)':'')+(a.stocked?' (les quantités ajoutées au stock seront retirées)':''))) return;
+  S.caisse=S.caisse.filter(x=>x.refAchat!==id);
+  if(a.stocked) S.stock.forEach(s=>{ (s.mv||[]).filter(m=>m.ach===id).forEach(m=>{ s.init=Math.max(0,(s.init||0)-m.q); }); s.mv=(s.mv||[]).filter(m=>m.ach!==id); s.qte=Math.max(0,(s.init||0)-(s.sortie||0)); });
+  TDEF().achats=ACH().filter(x=>x.id!==id); closeModal(); render(); toast('Achat supprimé'); }
 
 /* ---------------- ÉLÈVES ---------------- */
 let F_EL = {q:'', jour:'', statut:'Actif', v:'lab', mc:''};
@@ -1779,7 +1877,7 @@ const kitsOf = sid => S.kits.filter(k=>k.items.some(i=>i.sid===sid));
 const besoinArticle = (sid, pj) => sum(S.kits.filter(k=>!pj||k.projet===pj), k=>sum(k.items.filter(i=>i.sid===sid), i=>i.q*(+k.eleves||0)));
 const coutKit = k => sum(k.items, i=>i.q*(i.prix ?? stk(i.sid)?.prix ?? 0));
 VIEWS.stock = () => {
-  setHead('Stock & matériel', 'Stock initial · Sorties · Reste · Besoin · Manque');
+  setHead('Stock & matériel', 'Entrées · Sorties (avec dates) · Reste · Besoin · Manque');
   const tab = (k,l) => `<button class="${F_ST===k?'on':''}" onclick="F_ST='${k}';render()">${l}</button>`;
   const tabs = `<div class="tabs">${tab('tous','📦 Tableau de stock')}${tab('P1','🔧 Kits Projet 1')}${tab('P2','🤖 Robots (Projet 2)')}${tab('competition','🏆 Matériel compétitions')}</div>`;
   return tabs + (F_ST==='P1'||F_ST==='P2' ? stockProjet(F_ST) : F_ST==='competition' ? stockComp() : stockListe());
@@ -1808,7 +1906,7 @@ function catOf(nom){
 }
 S.stock.forEach(x=>{ if(!x.ref) x.ref = genRef(x.nom, x.id); if(x.init===undefined){ x.init=x.qte||0; x.sortie=0; } if(!x.catOk){ const c=catOf(x.nom); if(c!=='Autre' || !CATS.some(k=>k[0]===x.cat)) x.cat=c; x.catOk=1; } });
 let F_VIEW = 'magasin', F_CAT = '';
-function setStk(id,k,v){ const s=stk(id); s[k]=Math.max(0,+v||0); s.qte=Math.max(0,(s.init||0)-(s.sortie||0)); render(); }
+function setStk(id,k,v){ const s=stk(id), nv=Math.max(0,+v||0), d=nv-(s[k]||0); if(d){ s.mv=s.mv||[]; s.mv.push({id:uid('m'), t:k==='init'?'in':'out', q:d, d:TODAY, note:'Correction directe du tableau'}); } s[k]=nv; s.qte=Math.max(0,(s.init||0)-(s.sortie||0)); render(); }
 let F_SC='';
 function stockComp(){
   const all = S.stock.filter(s=>s.type==='competition');
@@ -1818,7 +1916,7 @@ function stockComp(){
   let rows='', tot=0;
   (F_SC?[F_SC]:comps).forEach(c=>{ const L=list.filter(s=>(s.comp||'Sans compétition')===c); if(!L.length) return;
     const st=sum(L,s=>(s.init||0)*(s.prix||0)); tot+=st;
-    rows += `<tr class="catrow"><td colspan="9">🏆 ${h(c)} <span style="font-weight:400;opacity:.8">· ${L.length} article(s) · ${dt(st)}</span></td></tr>`;
+    rows += `<tr class="catrow"><td colspan="11">🏆 ${h(c)} <span style="font-weight:400;opacity:.8">· ${L.length} article(s) · ${dt(st)}</span></td></tr>`;
     rows += L.map(s=>`<tr><td style="white-space:nowrap"><code style="font-weight:700;color:var(--navy)">${h(s.ref)}</code></td><td>${inp(s,'nom',230)}</td><td>${inp(s,'comp',150)}</td>
       <td class="num">${inp(s,'prix',75,'number')}</td><td class="num">${inp(s,'init',65,'number')}</td><td class="num">${inp(s,'sortie',65,'number')}</td>
       <td class="num"><b style="font-size:15px;color:${(s.init||0)-(s.sortie||0)<=0?'var(--bad)':'var(--green)'}">${(s.init||0)-(s.sortie||0)}</b></td><td class="num">${dt((s.init||0)*(s.prix||0))}</td>
@@ -1851,7 +1949,7 @@ function stockListe(){
   const inp = (s,k) => `<input type="number" min="0" value="${s[k]||0}" class="qin" onchange="setStk('${s.id}','${k}',this.value)">`;
   let rows = '', T = {init:0,sortie:0,reste:0,besoin:0,manque:0,cout:0};
   cats.forEach(c=>{
-    rows += `<tr class="catrow"><td colspan="9">${catIcon(c)} ${h(c)}</td></tr>`;
+    rows += `<tr class="catrow"><td colspan="11">${catIcon(c)} ${h(c)}</td></tr>`;
     list.filter(s=>s.cat===c).forEach(s=>{
       const reste = (s.init||0)-(s.sortie||0), besoin = besoinArticle(s.id), manque = Math.max(0, besoin-reste);
       T.init+=s.init||0; T.sortie+=s.sortie||0; T.reste+=reste; T.besoin+=besoin; T.manque+=manque; T.cout+=manque*(s.prix||0);
@@ -1860,17 +1958,18 @@ function stockListe(){
         <td class="num"><b style="font-size:15px;color:${reste<=0?'var(--bad)':'var(--green)'}">${reste}</b></td>
         <td class="num">${besoin||'—'}</td>
         <td class="num">${besoin?(manque?`<b style="color:var(--bad)">${manque}</b>`:'<span style="color:var(--green)">0 ✔</span>'):'—'}</td>
-        <td style="white-space:nowrap"><button class="btn sm g" onclick="editStock('${s.id}')">✏️</button> <button class="btn sm r" onclick="delStock('${s.id}')">🗑</button></td></tr>`;
+        <td class="small" style="white-space:nowrap">${stkLast(s,'in')?fmtD(stkLast(s,'in')):'—'}</td><td class="small" style="white-space:nowrap">${stkLast(s,'out')?fmtD(stkLast(s,'out')):'—'}</td>
+        <td style="white-space:nowrap"><button class="btn sm g" title="Entrée (réception)" onclick="stkMvModal('${s.id}','in')">📥</button> <button class="btn sm g" title="Sortie (utilisé)" onclick="stkMvModal('${s.id}','out')">📤</button> <button class="btn sm g" title="Historique des entrées / sorties" onclick="stkHist('${s.id}')">🕘</button> <button class="btn sm g" onclick="editStock('${s.id}')">✏️</button> <button class="btn sm r" onclick="delStock('${s.id}')">🗑</button></td></tr>`;
     });
   });
   return `<div class="toolbar"><input placeholder="🔍 Référence ou nom (ex : LED-001)…" value="${h(F_SQ)}" onchange="F_SQ=this.value;render()" style="min-width:280px">
       <span class="sp"></span><button class="btn o" onclick="editStock()">+ Article</button></div>
     <div class="card tw" style="padding:0"><table class="stab">
-      <thead><tr><th>Réf.</th><th>Article</th><th class="num">Prix</th><th class="num">Stock initial</th><th class="num">Sorties<br><small>(utilisés)</small></th><th class="num">Reste</th><th class="num">Besoin<br><small>(projets)</small></th><th class="num">Manque</th><th></th></tr></thead>
-      <tbody>${rows||'<tr><td colspan="9" class="empty">Aucun article.</td></tr>'}
-      <tr class="tot"><td></td><td>TOTAL</td><td></td><td class="num">${T.init}</td><td class="num">${T.sortie}</td><td class="num">${T.reste}</td><td class="num">${T.besoin}</td><td class="num" style="color:var(--bad)">${T.manque}</td><td class="small">à acheter : <b>${dt(T.cout)}</b></td></tr></tbody>
+      <thead><tr><th>Réf.</th><th>Article</th><th class="num">Prix</th><th class="num">Entrées</th><th class="num">Sorties<br><small>(utilisés)</small></th><th class="num">Reste</th><th class="num">Besoin<br><small>(projets)</small></th><th class="num">Manque</th><th>Dernière<br>entrée</th><th>Dernière<br>sortie</th><th></th></tr></thead>
+      <tbody>${rows||'<tr><td colspan="11" class="empty">Aucun article.</td></tr>'}
+      <tr class="tot"><td></td><td>TOTAL</td><td></td><td class="num">${T.init}</td><td class="num">${T.sortie}</td><td class="num">${T.reste}</td><td class="num">${T.besoin}</td><td class="num" style="color:var(--bad)">${T.manque}</td><td></td><td></td><td class="small">à acheter : <b>${dt(T.cout)}</b></td></tr></tbody>
     </table></div>
-    <div class="small muted">Reste = Stock initial − Sorties · Besoin = quantités des kits Projet 1 + Projet 2 × nombre d'élèves · Manque = Besoin − Reste</div>`;
+    <div class="small muted">📥 = entrée (réception, avec la date) · 📤 = sortie (utilisé, avec la date) · 🕘 = historique · Reste = Stock initial − Sorties · Besoin = quantités des kits Projet 1 + Projet 2 × nombre d'élèves · Manque = Besoin − Reste</div>`;
 }
 function stockProjet(pj){
   const kits = S.kits.filter(k=>k.projet===pj);
