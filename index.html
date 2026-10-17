@@ -1280,22 +1280,29 @@ function chUnpay(id){ const c=CHG().find(x=>x.id===id), p=chPaid(c,F_CH.mois); i
 /* ---------------- MOUVEMENTS DE STOCK (date d'entrée / de sortie) ---------------- */
 function stkMove(s, t, q, d, note, ach){ q=+q||0; if(!s||!q) return; s.mv=s.mv||[]; s.mv.push({id:uid('m'), t, q, d:d||TODAY, note:note||'', ach:ach||''});
   if(t==='in') s.init=(s.init||0)+q; else s.sortie=(s.sortie||0)+q; s.qte=Math.max(0,(s.init||0)-(s.sortie||0)); }
+
+function stkPaye(s){ // état de paiement des entrées de cet article
+  const ins=(s.mv||[]).filter(m=>m.t==='in'&&m.q>0); if(!ins.length) return '';
+  let non=0, oui=0; ins.forEach(m=>{ if(m.ach){ const a=ACH().find(x=>x.id===m.ach); if(a) (achCaisse(a)?oui++:non++); } else if(m.paye==='oui') oui++; else if(m.paye==='non') non++; });
+  return non?'non':oui?'oui':''; }
 const stkLast = (s,t) => (s.mv||[]).filter(m=>m.t===t).map(m=>m.d).sort().pop()||'';
 function stkMvModal(id, t){
   const s=stk(id);
   formModal((t==='in'?'📥 Entrée en stock – ':'📤 Sortie du stock – ')+s.nom, [
     {k:'q',label:'Quantité',type:'number',req:1},{k:'d',label:t==='in'?'Date d\'entrée':'Date de sortie',type:'date',req:1},
-    {k:'note',label:t==='in'?'D\'où ? (fournisseur, don…)':'Pour quoi / pour qui ? (groupe, robot, compétition…)',full:1}], {q:1, d:TODAY},
-  fd => { const q=+fd.q; if(!(q>0)){toast('Quantité invalide');return false;} if(t==='out' && q>(s.init||0)-(s.sortie||0) && !confirm('Il ne reste que '+((s.init||0)-(s.sortie||0))+' en stock. Continuer ?')) return false; stkMove(s,t,q,fd.d,fd.note); });
+    ...(t==='in'&&isAdmin()?[{k:'paye',label:'Payé ?',type:'select',options:[['oui','✔ Oui, payé'],['non','✖ Non, pas encore payé'],['','Pas concerné (don, ancien stock…)']]}]:[]),
+    {k:'note',label:t==='in'?'D\'où ? (fournisseur, don…)':'Pour quoi / pour qui ? (groupe, robot, compétition…)',full:1}], {q:1, d:TODAY, paye:'oui'},
+  fd => { const q=+fd.q; if(!(q>0)){toast('Quantité invalide');return false;} if(t==='out' && q>(s.init||0)-(s.sortie||0) && !confirm('Il ne reste que '+((s.init||0)-(s.sortie||0))+' en stock. Continuer ?')) return false; stkMove(s,t,q,fd.d,fd.note); if(t==='in'&&fd.paye) s.mv[s.mv.length-1].paye=fd.paye; });
 }
 function stkHist(id){
   const s=stk(id), L=[...(s.mv||[])].sort((a,b)=>b.d.localeCompare(a.d));
   openModal(mHead('🕘 Historique – '+h(s.nom)) + `<div class="small muted" style="margin-bottom:8px">Réf. ${h(s.ref)} · en stock : <b>${(s.init||0)-(s.sortie||0)}</b></div>
     <div class="tw"><table><tr><th>Date</th><th>Mouvement</th><th class="num">Qté</th><th>Remarque</th><th></th></tr>
-    ${L.map(m=>`<tr><td>${fmtD(m.d)}</td><td>${m.t==='in'?'<b style="color:var(--green)">📥 Entrée</b>':'<b style="color:var(--bad)">📤 Sortie</b>'}</td><td class="num"><b>${m.q}</b></td><td class="small">${h(m.note||'')}</td>
+    ${L.map(m=>`<tr><td>${fmtD(m.d)}</td><td>${m.t==='in'?'<b style="color:var(--green)">📥 Entrée</b>':'<b style="color:var(--bad)">📤 Sortie</b>'}</td><td class="num"><b>${m.q}</b></td><td class="small">${h(m.note||'')}${m.t==='in'&&isAdmin()?(m.ach?' <span class="muted">(voir Achats)</span>':` <a style="cursor:pointer;font-weight:700;color:${m.paye==='non'?'#b42318':m.paye==='oui'?'#156b3a':'#888'}" title="Cliquer pour changer" onclick="stkMvPaye('${s.id}','${m.id}')">${m.paye==='non'?'✖ Non payé':m.paye==='oui'?'✔ Payé':'payé ? —'}</a>`):''}</td>
       <td><button class="btn sm r" title="Supprimer ce mouvement" onclick="stkMvDel('${s.id}','${m.id}')">🗑</button></td></tr>`).join('')||'<tr><td colspan="5" class="empty">Aucun mouvement enregistré.</td></tr>'}</table></div>
     <div class="mfoot"><button class="btn g" onclick="closeModal()">Fermer</button></div>`);
 }
+function stkMvPaye(sid,mid){ const m=(stk(sid).mv||[]).find(x=>x.id===mid); m.paye=m.paye==='oui'?'non':m.paye==='non'?'':'oui'; render(); stkHist(sid); }
 function stkMvDel(sid, mid){ const s=stk(sid), m=(s.mv||[]).find(x=>x.id===mid); if(!m||!confirm('Supprimer ce mouvement ? (la quantité est corrigée)')) return;
   if(m.t==='in') s.init=Math.max(0,(s.init||0)-m.q); else s.sortie=Math.max(0,(s.sortie||0)-m.q); s.qte=Math.max(0,(s.init||0)-(s.sortie||0)); s.mv=s.mv.filter(x=>x!==m); render(); stkHist(sid); }
 
@@ -1916,7 +1923,7 @@ function stockComp(){
   let rows='', tot=0;
   (F_SC?[F_SC]:comps).forEach(c=>{ const L=list.filter(s=>(s.comp||'Sans compétition')===c); if(!L.length) return;
     const st=sum(L,s=>(s.init||0)*(s.prix||0)); tot+=st;
-    rows += `<tr class="catrow"><td colspan="11">🏆 ${h(c)} <span style="font-weight:400;opacity:.8">· ${L.length} article(s) · ${dt(st)}</span></td></tr>`;
+    rows += `<tr class="catrow"><td colspan="${isAdmin()?12:11}">🏆 ${h(c)} <span style="font-weight:400;opacity:.8">· ${L.length} article(s) · ${dt(st)}</span></td></tr>`;
     rows += L.map(s=>`<tr><td style="white-space:nowrap"><code style="font-weight:700;color:var(--navy)">${h(s.ref)}</code></td><td>${inp(s,'nom',230)}</td><td>${inp(s,'comp',150)}</td>
       <td class="num">${inp(s,'prix',75,'number')}</td><td class="num">${inp(s,'init',65,'number')}</td><td class="num">${inp(s,'sortie',65,'number')}</td>
       <td class="num"><b style="font-size:15px;color:${(s.init||0)-(s.sortie||0)<=0?'var(--bad)':'var(--green)'}">${(s.init||0)-(s.sortie||0)}</b></td><td class="num">${dt((s.init||0)*(s.prix||0))}</td>
@@ -1949,7 +1956,7 @@ function stockListe(){
   const inp = (s,k) => `<input type="number" min="0" value="${s[k]||0}" class="qin" onchange="setStk('${s.id}','${k}',this.value)">`;
   let rows = '', T = {init:0,sortie:0,reste:0,besoin:0,manque:0,cout:0};
   cats.forEach(c=>{
-    rows += `<tr class="catrow"><td colspan="11">${catIcon(c)} ${h(c)}</td></tr>`;
+    rows += `<tr class="catrow"><td colspan="${isAdmin()?12:11}">${catIcon(c)} ${h(c)}</td></tr>`;
     list.filter(s=>s.cat===c).forEach(s=>{
       const reste = (s.init||0)-(s.sortie||0), besoin = besoinArticle(s.id), manque = Math.max(0, besoin-reste);
       T.init+=s.init||0; T.sortie+=s.sortie||0; T.reste+=reste; T.besoin+=besoin; T.manque+=manque; T.cout+=manque*(s.prix||0);
@@ -1958,16 +1965,16 @@ function stockListe(){
         <td class="num"><b style="font-size:15px;color:${reste<=0?'var(--bad)':'var(--green)'}">${reste}</b></td>
         <td class="num">${besoin||'—'}</td>
         <td class="num">${besoin?(manque?`<b style="color:var(--bad)">${manque}</b>`:'<span style="color:var(--green)">0 ✔</span>'):'—'}</td>
-        <td class="small" style="white-space:nowrap">${stkLast(s,'in')?fmtD(stkLast(s,'in')):'—'}</td><td class="small" style="white-space:nowrap">${stkLast(s,'out')?fmtD(stkLast(s,'out')):'—'}</td>
+        <td class="small" style="white-space:nowrap">${stkLast(s,'in')?fmtD(stkLast(s,'in')):'—'}</td><td class="small" style="white-space:nowrap">${stkLast(s,'out')?fmtD(stkLast(s,'out')):'—'}</td>${isAdmin()?`<td class="small" style="white-space:nowrap">${{oui:'<b style="color:#156b3a">✔ Payé</b>',non:'<b style="color:#b42318;cursor:pointer" title="Voir l\'historique" onclick="stkHist(\''+s.id+'\')">✖ Non payé</b>'}[stkPaye(s)]||'<span class="muted">—</span>'}</td>`:''}
         <td style="white-space:nowrap"><button class="btn sm g" title="Entrée (réception)" onclick="stkMvModal('${s.id}','in')">📥</button> <button class="btn sm g" title="Sortie (utilisé)" onclick="stkMvModal('${s.id}','out')">📤</button> <button class="btn sm g" title="Historique des entrées / sorties" onclick="stkHist('${s.id}')">🕘</button> <button class="btn sm g" onclick="editStock('${s.id}')">✏️</button> <button class="btn sm r" onclick="delStock('${s.id}')">🗑</button></td></tr>`;
     });
   });
   return `<div class="toolbar"><input placeholder="🔍 Référence ou nom (ex : LED-001)…" value="${h(F_SQ)}" onchange="F_SQ=this.value;render()" style="min-width:280px">
       <span class="sp"></span><button class="btn o" onclick="editStock()">+ Article</button></div>
     <div class="card tw" style="padding:0"><table class="stab">
-      <thead><tr><th>Réf.</th><th>Article</th><th class="num">Prix</th><th class="num">Entrées</th><th class="num">Sorties<br><small>(utilisés)</small></th><th class="num">Reste</th><th class="num">Besoin<br><small>(projets)</small></th><th class="num">Manque</th><th>Dernière<br>entrée</th><th>Dernière<br>sortie</th><th></th></tr></thead>
+      <thead><tr><th>Réf.</th><th>Article</th><th class="num">Prix</th><th class="num">Entrées</th><th class="num">Sorties<br><small>(utilisés)</small></th><th class="num">Reste</th><th class="num">Besoin<br><small>(projets)</small></th><th class="num">Manque</th><th>Date<br>d'entrée</th><th>Date<br>de sortie</th>${isAdmin()?'<th>Payé ?</th>':''}<th></th></tr></thead>
       <tbody>${rows||'<tr><td colspan="11" class="empty">Aucun article.</td></tr>'}
-      <tr class="tot"><td></td><td>TOTAL</td><td></td><td class="num">${T.init}</td><td class="num">${T.sortie}</td><td class="num">${T.reste}</td><td class="num">${T.besoin}</td><td class="num" style="color:var(--bad)">${T.manque}</td><td></td><td></td><td class="small">à acheter : <b>${dt(T.cout)}</b></td></tr></tbody>
+      <tr class="tot"><td></td><td>TOTAL</td><td></td><td class="num">${T.init}</td><td class="num">${T.sortie}</td><td class="num">${T.reste}</td><td class="num">${T.besoin}</td><td class="num" style="color:var(--bad)">${T.manque}</td><td></td><td></td>${isAdmin()?'<td></td>':''}<td class="small">à acheter : <b>${dt(T.cout)}</b></td></tr></tbody>
     </table></div>
     <div class="small muted">📥 = entrée (réception, avec la date) · 📤 = sortie (utilisé, avec la date) · 🕘 = historique · Reste = Stock initial − Sorties · Besoin = quantités des kits Projet 1 + Projet 2 × nombre d'élèves · Manque = Besoin − Reste</div>`;
 }
