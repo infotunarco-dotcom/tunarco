@@ -679,9 +679,9 @@ function syncSnapshot(){
 }
 function achTables(){
   const A=[...ACH()].sort((a,b)=>a.date.localeCompare(b.date));
-  const ach=[['ACHATS '+anLabel()+' (mis à jour automatiquement par le site)'],['Date','Fournisseur','Document','N°','Montant','Payé ?','Date paiement','Mode','Au stock ?','Composants','Remarque']];
-  A.forEach(a=>{ const p=achCaisse(a); ach.push([fmtD(a.date),a.four,a.doc||'',a.num||'',+a.montant||0,p?'Oui':'Non',p?fmtD(p.date):'',p?(p.rq||''):'',(a.items||[]).length?(a.stocked?'Oui':'Non'):'—',(a.items||[]).map(i=>(i.q||0)+' × '+(stk(i.sid)?.nom||i.nom||'?')).join(' ; '),a.note||'']); });
-  ach.push(['','TOTAL','','',sum(A,a=>+a.montant||0),'Non payé : '+sum(A.filter(a=>!achCaisse(a)),a=>+a.montant||0)]);
+  const ach=[['ACHATS & FOURNISSEURS '+anLabel()+' (mis à jour automatiquement par le site)'],['Date','Facture / BL','N°','Fournisseur','Téléphone','Adresse','Utilisé pour','Articles','Montant','Payé ?','Date paiement','Mode de paiement','Remarque']];
+  A.forEach(a=>{ const p=achCaisse(a), f=FOURS().find(x=>x.nom===a.four)||{}; ach.push([fmtD(a.date),(a.doc||'').split(' ')[0],a.num||'',a.four,f.tel||'',f.adr||'',a.usage||'',(a.items||[]).map(i=>(i.q||0)+' × '+(stk(i.sid)?.nom||i.nom||'?')).join(' ; '),+a.montant||0,p?'Oui':'Non',p?fmtD(p.date):'',p?(p.rq||''):'',a.note||'']); });
+  ach.push(['','','','TOTAL','','','','',sum(A,a=>+a.montant||0),'Non payé : '+sum(A.filter(a=>!achCaisse(a)),a=>+a.montant||0)]);
   const four=[['FOURNISSEURS'],['Fournisseur','Téléphone','Adresse','Matricule fiscal','Remarque','Nb achats','Total acheté','Non payé']];
   fourNames().forEach(n=>{ const f=FOURS().find(x=>x.nom===n)||{}, L=A.filter(a=>a.four===n); four.push([n,f.tel||'',f.adr||'',f.mf||'',f.note||'',L.length,sum(L,a=>+a.montant||0),sum(L.filter(a=>!achCaisse(a)),a=>+a.montant||0)]); });
   const chg=[['CHARGES '+anLabel()+' (mois par mois)'],['Charge','Quand','Montant prévu',...chMoisList().map(m=>chLabel(m).toLowerCase())]], chgBold=[0,1];
@@ -1336,99 +1336,96 @@ const ACH = () => { const T=TDEF(); if(!Array.isArray(T.achats)) T.achats=[]; re
 let F_AC = {f:'', np:false}, AE = null;
 const achCaisse = a => S.caisse.find(x=>x.refAchat===a.id);
 VIEWS.achats = () => {
-  setHead('Achats', '');
+  setHead('Achats & fournisseurs', '');
   const all=[...ACH()].sort((a,b)=>b.date.localeCompare(a.date)), nonPaye=all.filter(a=>!achCaisse(a));
-  const tab=(k,l)=>`<button class="${(F_AC.f==='four')===(k==='four')?'on':''}" style="font-size:16px;padding:10px 18px" onclick="F_AC.f='${k}';render()">${l}</button>`;
-  const head=`<div class="toolbar"><div class="tabs" style="margin:0">${tab('','🧾 Mes achats')}${tab('four','🏢 Mes fournisseurs')}</div><span class="sp"></span>
-    <button class="btn g" title="Télécharger achats, fournisseurs, charges et stock en Excel" onclick="dlExcel()">⬇ Télécharger Excel</button>
-    ${F_AC.f==='four'?`<button class="btn" style="font-size:15px" onclick="fourEdit()">+ Nouveau fournisseur</button>`:`<button class="btn" style="font-size:15px" onclick="achEdit()">+ Nouvel achat</button>`}</div>`;
-  if(F_AC.f==='four') return head+`<div class="small muted" style="margin-bottom:8px">La liste de vos fournisseurs, avec ce que vous leur avez acheté et ce qui reste à payer.</div>`+fourListe();
-  if(!all.length) return head+`<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:44px">🧾</div><h3 style="margin:8px 0">Aucun achat pour le moment</h3>
-    <p class="muted" style="max-width:520px;margin:0 auto 16px">Quand vous achetez des composants ou du matériel, enregistrez ici la facture ou le BL : le fournisseur, le montant, s'il est payé et si les composants sont rangés dans le stock.</p>
-    <button class="btn" style="font-size:16px;padding:12px 22px" onclick="achEdit()">+ Ajouter mon premier achat</button></div>`;
   const L = F_AC.np ? nonPaye : all;
+  const head=`<div class="toolbar"><span class="small muted">Chaque achat : facture / BL, fournisseur, utilisation, payé ou non. Les articles sont ajoutés <b>automatiquement</b> au stock.</span><span class="sp"></span>
+    <button class="btn g" onclick="dlExcel()">⬇ Télécharger Excel</button><button class="btn" style="font-size:15px" onclick="achEdit()">+ Nouvel achat</button></div>`;
+  if(!all.length) return head+`<div class="card" style="text-align:center;padding:40px 20px"><div style="font-size:44px">🧾</div><h3 style="margin:8px 0">Aucun achat pour le moment</h3>
+    <button class="btn" style="font-size:16px;padding:12px 22px" onclick="achEdit()">+ Ajouter mon premier achat</button></div>`;
+  const usageCol={Projet:'#1d4ed8',Compétition:'#b45309',Formation:'#047857'};
   return head+`<div class="grid kpis">
-    <div class="kpi"><div class="l">Total des achats</div><div class="v">${dt(sum(all,a=>+a.montant||0))}</div></div>
+    <div class="kpi"><div class="l">Total des achats</div><div class="v">${dt(sum(all,a=>+a.montant||0))}</div><div class="s">${all.length} achat(s)</div></div>
     <div class="kpi" style="border-left-color:var(--bad)"><div class="l">Reste à payer aux fournisseurs</div><div class="v" style="color:${nonPaye.length?'var(--bad)':'var(--green)'}">${dt(sum(nonPaye,a=>+a.montant||0))}</div>
       ${nonPaye.length?`<div class="s"><a style="cursor:pointer" onclick="F_AC.np=!F_AC.np;render()">${F_AC.np?'↩ voir tous les achats':'👉 voir seulement les '+nonPaye.length+' non payé(s)'}</a></div>`:'<div class="s">Tout est payé ✔</div>'}</div>
   </div>
-  <div class="card tw" style="padding:0"><table><tr><th>Date</th><th>Fournisseur</th><th>Facture / BL</th><th class="num">Montant</th><th>Payé ?</th><th>Rangé au stock ?</th><th></th></tr>
-    ${L.map(a=>{ const p=achCaisse(a), n=(a.items||[]).length; return `<tr><td>${fmtD(a.date)}</td><td><b>${h(a.four||'')}</b></td><td>${h((a.doc||'').split(' ')[0])}${a.num?' n° '+h(a.num):''}</td><td class="num"><b>${dt(+a.montant||0)}</b></td>
-      <td>${p?`<span style="color:#156b3a;font-weight:700">✔ Oui</span>`:`<span style="color:#b42318;font-weight:700">✖ Non</span> <button class="btn sm" onclick="achPay('${a.id}')">💵 Payer</button>`}</td>
-      <td>${!n?'<span class="muted">pas de composants</span>':a.stocked?`<span style="color:#156b3a;font-weight:700">✔ Oui</span>`:`<span style="color:#b56b00;font-weight:700">✖ Non</span> <button class="btn sm o" onclick="achStock('${a.id}')">📥 Ranger</button>`}</td>
-      <td><button class="btn sm g" onclick="achEdit('${a.id}')">✏️ Modifier</button></td></tr>`; }).join('')}</table></div>
-  <div class="small muted">📁 Ces listes sont aussi recopiées toutes seules dans Google Drive : fichier <b>Paiement</b> (onglets ACHATS, FOURNISSEURS, CHARGES) et fichier <b>Base de données</b> (onglet STOCK).</div>`;
+  <div class="card tw" style="padding:0"><table><tr><th>Date</th><th>N° facture / BL</th><th>Fournisseur</th><th>Coordonnées</th><th>Utilisé pour</th><th>Articles</th><th class="num">Montant</th><th>Payé ?</th><th>Mode</th><th></th></tr>
+    ${L.map(a=>{ const p=achCaisse(a), f=FOURS().find(x=>x.nom===a.four)||{}, it=a.items||[];
+      return `<tr><td style="white-space:nowrap">${fmtD(a.date)}</td><td>${h((a.doc||'Facture').split(' ')[0])}${a.num?' <b>n° '+h(a.num)+'</b>':''}</td><td><b>${h(a.four||'')}</b></td>
+      <td class="small">${f.tel?`📞 <a href="tel:${h(f.tel)}">${h(f.tel)}</a>`:''}${f.adr?`<div>📍 ${h(f.adr)}</div>`:''}${!f.tel&&!f.adr?'<span class="muted">—</span>':''}</td>
+      <td>${a.usage?`<span class="badge" style="background:${(usageCol[a.usage]||'#555')}1a;color:${usageCol[a.usage]||'#555'}">${h(a.usage)}</span>`:'<span class="muted">—</span>'}</td>
+      <td class="small">${it.length?it.map(i=>`${i.q} × ${h(stk(i.sid)?.nom||i.nom||'?')}`).join('<br>'):'<span class="muted">—</span>'}</td>
+      <td class="num"><b>${dt(+a.montant||0)}</b></td>
+      <td style="white-space:nowrap">${p?`<span style="color:#156b3a;font-weight:700">✔ Payé</span><div class="small muted">${fmtD(p.date)}</div>`:`<span style="color:#b42318;font-weight:700">✖ Non payé</span>`}</td>
+      <td class="small">${p?h(p.rq||''):''}</td>
+      <td style="white-space:nowrap"><button class="btn sm" onclick="achEdit('${a.id}')">✏️ Modifier</button></td></tr>`; }).join('')}
+    <tr class="tot"><td colspan="6">TOTAL</td><td class="num">${dt(sum(L,a=>+a.montant||0))}</td><td colspan="3"></td></tr></table></div>
+  <div class="small muted">📁 Recopié tout seul dans Google Drive : fichier <b>Paiement</b> (onglets ACHATS, FOURNISSEURS, CHARGES) et <b>Base de données</b> (onglet STOCK).</div>`;
 };
 const encQ = n => encodeURIComponent(n).replace(/'/g,'%27');
-function fourListe(){
-  const names=fourNames();
-  return `<div class="card tw" style="padding:0"><table><tr><th>Fournisseur</th><th>Téléphone</th><th>Adresse / remarque</th><th class="num">Total acheté</th><th class="num">Non payé</th><th></th></tr>
-    ${names.map(n=>{ const f=FOURS().find(x=>x.nom===n)||{}; const A=ACH().filter(a=>a.four===n), np=sum(A.filter(a=>!achCaisse(a)),a=>+a.montant||0);
-      return `<tr><td><b>${h(n)}</b><div class="small muted">${A.length} achat(s)</div></td><td>${f.tel?`<a href="tel:${h(f.tel)}">${h(f.tel)}</a>`:'<span class="muted">—</span>'}</td><td class="small">${h([f.adr,f.note].filter(Boolean).join(' · '))||'<span class="muted">—</span>'}</td>
-        <td class="num"><b>${dt(sum(A,a=>+a.montant||0))}</b></td><td class="num">${np?`<b style="color:var(--bad)">${dt(np)}</b>`:'<span style="color:var(--green)">0 ✔</span>'}</td>
-        <td style="white-space:nowrap"><button class="btn sm g" onclick="fourEdit(decodeURIComponent('${encQ(n)}'))">✏️ Modifier</button> <button class="btn sm" onclick="achEdit();AE.four=decodeURIComponent('${encQ(n)}');achModal()">+ Achat</button></td></tr>`; }).join('')||'<tr><td colspan="6" class="empty">Aucun fournisseur. Cliquez sur « + Ajouter un fournisseur ».</td></tr>'}</table></div>`;
-}
-function fourEdit(nom){
-  const L=FOURS(); let f=nom?L.find(x=>x.nom===nom):null; const v=f?{...f}:{nom:nom||''};
-  formModal(nom?'Modifier le fournisseur':'Nouveau fournisseur', [{k:'nom',label:'Nom du fournisseur',req:1},{k:'tel',label:'Téléphone'},{k:'adr',label:'Adresse',full:1},{k:'mf',label:'Matricule fiscal'},{k:'note',label:'Remarque (produits, contact…)'}], v,
-  fd => { fd.nom=fd.nom.trim(); if(nom && fd.nom!==nom){ ACH().forEach(a=>{ if(a.four===nom) a.four=fd.nom; }); S.stock.forEach(s=>(s.mv||[]).forEach(m=>{ if(m.four===nom) m.four=fd.nom; })); }
-    if(f) Object.assign(f,fd); else L.push(fd); },
-  nom&&f?`<button type="button" class="btn r" style="margin-right:auto" onclick="if(confirm('Supprimer la fiche de ce fournisseur ? (ses achats restent)')){TDEF().fournisseurs=FOURS().filter(x=>x.nom!==decodeURIComponent('${encQ(nom)}'));closeModal();render();}">Supprimer</button>`:'');
-}
+const USAGES = ['Projet','Compétition','Formation','Autre'];
 function achEdit(id){
-  const a = id ? ACH().find(x=>x.id===id) : null;
-  AE = a ? {...a, items:(a.items||[]).map(i=>({...i}))} : {date:TODAY, four:'', doc:'Facture', num:'', montant:'', note:'', items:[], payer:'0', stocker:'1', mode:'Espèces'};
+  const a = id ? ACH().find(x=>x.id===id) : null, p=a?achCaisse(a):null;
+  AE = a ? {...a, items:(a.items||[]).map(i=>({...i})), paye:p?'1':'0', pdate:p?p.date:TODAY, mode:p?(p.rq||'Espèces'):'Espèces'} : {date:TODAY, four:'', doc:'Facture', num:'', montant:'', note:'', usage:'Projet', items:[], paye:'0', pdate:TODAY, mode:'Espèces'};
+  const f=FOURS().find(x=>x.nom===AE.four)||{}; AE.tel=f.tel||''; AE.adr=f.adr||''; AE._t0=sum(AE.items,i=>(+i.q||0)*(+i.prix||0));
   achModal();
 }
+function achFour(v){ AE.four=v; const f=FOURS().find(x=>x.nom===v.trim()); if(f){ AE.tel=f.tel||''; AE.adr=f.adr||''; const t=$('#ae-tel'), d=$('#ae-adr'); if(t) t.value=AE.tel; if(d) d.value=AE.adr; } }
 function achModal(){
   const four=fourNames();
   const opts = sel => `<option value="">— nouvel article —</option>`+[...S.stock].sort((a,b)=>String(a.nom).localeCompare(String(b.nom))).map(s=>`<option value="${s.id}" ${s.id===sel?'selected':''}>${h(s.nom)} (${h(s.ref)})</option>`).join('');
-  const tot = sum(AE.items, i=>(+i.q||0)*(+i.prix||0)), isNew=!AE.id, locked=AE.stocked;
-  openModal(mHead(isNew?'🛒 Nouvel achat':'✏️ Modifier l\'achat') + `<div class="form">
+  const tot = sum(AE.items, i=>(+i.q||0)*(+i.prix||0));
+  openModal(mHead(AE.id?'✏️ Modifier l\'achat':'🛒 Nouvel achat') + `<div class="form">
+    <div class="sec">1. Facture / BL</div>
     <label>Date<input type="date" value="${AE.date}" onchange="AE.date=this.value"></label>
-    <label>Fournisseur<input list="dl-four" value="${h(AE.four)}" oninput="AE.four=this.value" placeholder="choisir ou taper le nom"><datalist id="dl-four">${four.map(x=>`<option value="${h(x)}">`).join('')}</datalist></label>
-    <label>Document<select onchange="AE.doc=this.value">${['Facture','BL (bon de livraison)','Ticket','Autre'].map(x=>`<option ${AE.doc===x?'selected':''}>${x}</option>`).join('')}</select></label>
-    <label>Numéro de la facture / du BL<input value="${h(AE.num||'')}" oninput="AE.num=this.value"></label>
-    <label>Montant total à payer (DT)<input type="number" step="any" min="0" value="${AE.montant}" oninput="AE.montant=this.value" placeholder="${tot?tot.toFixed(3):''}"></label>
-    <label>Remarque (facultatif)<input value="${h(AE.note||'')}" oninput="AE.note=this.value"></label>
-    ${isNew?`<label>Déjà payé ?<select onchange="AE.payer=this.value;achModal()"><option value="0" ${AE.payer!=='1'?'selected':''}>Non, pas encore</option><option value="1" ${AE.payer==='1'?'selected':''}>Oui, payé aujourd'hui</option></select></label>
-      ${AE.payer==='1'?`<label>Comment ?<select onchange="AE.mode=this.value">${MODES.map(m=>`<option ${AE.mode===m?'selected':''}>${h(m)}</option>`).join('')}</select></label>`:''}`:''}
-    <div class="sec">Composants achetés – pour les ranger dans le stock (vous pouvez laisser vide)${locked?' · déjà rangés':''}</div></div>
+    <label>Facture ou BL ?<select onchange="AE.doc=this.value">${['Facture','BL','Ticket','Autre'].map(x=>`<option ${String(AE.doc||'').split(' ')[0]===x?'selected':''}>${x}</option>`).join('')}</select></label>
+    <label>Numéro<input value="${h(AE.num||'')}" oninput="AE.num=this.value"></label>
+    <label>Utilisé pour<select onchange="AE.usage=this.value">${USAGES.map(x=>`<option ${AE.usage===x?'selected':''}>${x}</option>`).join('')}</select></label>
+    <div class="sec">2. Fournisseur</div>
+    <label>Nom du fournisseur<input list="dl-four" value="${h(AE.four)}" oninput="achFour(this.value)" placeholder="choisir ou taper"><datalist id="dl-four">${four.map(x=>`<option value="${h(x)}">`).join('')}</datalist></label>
+    <label>Téléphone<input id="ae-tel" value="${h(AE.tel||'')}" oninput="AE.tel=this.value"></label>
+    <label class="full">Adresse<input id="ae-adr" value="${h(AE.adr||'')}" oninput="AE.adr=this.value"></label>
+    <div class="sec">3. Paiement</div>
+    <label>Montant total (DT)<input type="number" step="any" min="0" value="${AE.montant}" oninput="AE.montant=this.value" placeholder="${tot?tot.toFixed(3):''}"></label>
+    <label>Payé ?<select onchange="AE.paye=this.value;achModal()"><option value="0" ${AE.paye!=='1'?'selected':''}>✖ Non, pas encore</option><option value="1" ${AE.paye==='1'?'selected':''}>✔ Oui, payé</option></select></label>
+    ${AE.paye==='1'?`<label>Date du paiement<input type="date" value="${AE.pdate}" onchange="AE.pdate=this.value"></label>
+      <label>Mode de paiement<select onchange="AE.mode=this.value">${MODES.map(m=>`<option ${AE.mode===m?'selected':''}>${h(m)}</option>`).join('')}</select></label>`:''}
+    <label class="full">Remarque (facultatif)<input value="${h(AE.note||'')}" oninput="AE.note=this.value"></label>
+    <div class="sec">4. Articles achetés → ajoutés automatiquement au stock</div></div>
     <div class="tw"><table class="small"><tr><th>Article</th><th class="num">Quantité</th><th class="num">Prix unitaire</th><th class="num">Total</th><th></th></tr>
-      ${AE.items.map((i,ii)=>`<tr><td><select ${locked?'disabled':''} style="max-width:260px" onchange="AE.items[${ii}].sid=this.value;if(this.value&&!AE.items[${ii}].prix)AE.items[${ii}].prix=stk(this.value).prix||0;achModal()">${opts(i.sid)}</select>${!i.sid?`<input ${locked?'disabled':''} placeholder="Nom du nouvel article" value="${h(i.nom||'')}" oninput="AE.items[${ii}].nom=this.value" style="margin-top:4px;width:100%">`:''}</td>
-        <td class="num"><input ${locked?'disabled':''} type="number" min="0" value="${i.q}" style="width:70px" onchange="AE.items[${ii}].q=+this.value;achModal()"></td>
+      ${AE.items.map((i,ii)=>`<tr><td><select style="max-width:260px" onchange="AE.items[${ii}].sid=this.value;if(this.value&&!AE.items[${ii}].prix)AE.items[${ii}].prix=stk(this.value).prix||0;achModal()">${opts(i.sid)}</select>${!i.sid?`<input placeholder="Nom du nouvel article" value="${h(i.nom||'')}" oninput="AE.items[${ii}].nom=this.value" style="margin-top:4px;width:100%">`:''}</td>
+        <td class="num"><input type="number" min="0" value="${i.q}" style="width:70px" onchange="AE.items[${ii}].q=+this.value;achModal()"></td>
         <td class="num"><input type="number" min="0" step="any" value="${i.prix}" style="width:80px" onchange="AE.items[${ii}].prix=+this.value;achModal()"></td>
-        <td class="num">${dt((+i.q||0)*(+i.prix||0))}</td><td>${locked?'':`<button class="btn sm r" onclick="AE.items.splice(${ii},1);achModal()">✕</button>`}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Aucun composant. Cliquez sur « + Ajouter un composant » si vous voulez les ranger dans le stock.</td></tr>'}
-      ${tot?`<tr class="tot"><td>Total des composants</td><td></td><td></td><td class="num">${dt(tot)}</td><td></td></tr>`:''}</table></div>
-    <div class="toolbar" style="margin-top:8px">${locked?'':`<button class="btn sm g" onclick="AE.items.push({sid:'',nom:'',q:1,prix:0});achModal()">+ Ajouter un composant</button>`}
-      ${isNew&&AE.items.length?`<label class="small" style="display:flex;gap:6px;align-items:center"><input type="checkbox" ${AE.stocker==='1'?'checked':''} onchange="AE.stocker=this.checked?'1':'0'"> Ranger ces composants dans le stock maintenant</label>`:''}</div>
+        <td class="num">${dt((+i.q||0)*(+i.prix||0))}</td><td><button class="btn sm r" onclick="AE.items.splice(${ii},1);achModal()">✕</button></td></tr>`).join('')||'<tr><td colspan="5" class="empty">Aucun article (ex : service, transport…).</td></tr>'}
+      ${tot?`<tr class="tot"><td>Total des articles</td><td></td><td></td><td class="num">${dt(tot)}</td><td></td></tr>`:''}</table></div>
+    <div class="toolbar" style="margin-top:8px"><button class="btn sm g" onclick="AE.items.push({sid:'',nom:'',q:1,prix:0});achModal()">+ Ajouter un article</button></div>
     <div class="mfoot">${AE.id?`<button class="btn r" style="margin-right:auto" onclick="achDel('${AE.id}')">Supprimer</button>`:''}<button class="btn g" onclick="closeModal()">Annuler</button><button class="btn" onclick="achSave()">Enregistrer</button></div>`, true);
 }
+function achUnstock(a){ S.stock.forEach(s=>{ (s.mv||[]).filter(m=>m.ach===a.id).forEach(m=>{ s.init=Math.max(0,(s.init||0)-m.q); }); s.mv=(s.mv||[]).filter(m=>m.ach!==a.id); s.qte=Math.max(0,(s.init||0)-(s.sortie||0)); }); a.stocked=0; }
 function achSave(){
   if(!String(AE.four).trim()) return toast('Tapez le nom du fournisseur');
-  const tot=sum(AE.items,i=>(+i.q||0)*(+i.prix||0)); const montant=+AE.montant||tot; if(!(montant>0)) return toast('Tapez le montant');
-  if(AE.items.some(i=>!i.sid&&!String(i.nom||'').trim())) return toast('Choisissez ou tapez le nom de chaque composant');
-  const data={date:AE.date, four:AE.four.trim(), doc:AE.doc, num:String(AE.num||'').trim(), montant, note:AE.note||'', items:AE.items.map(i=>({sid:i.sid||'', nom:i.nom||'', q:+i.q||0, prix:+i.prix||0}))};
-  if(!FOURS().some(f=>f.nom===data.four)) FOURS().push({nom:data.four});
-  let a; if(AE.id){ a=ACH().find(x=>x.id===AE.id); Object.assign(a,data); const c=achCaisse(a); if(c){ c.montant=montant; c.libelle=achLib(a); } }
-  else { a={id:uid('a'), ...data, stocked:0}; ACH().push(a); if(AE.payer==='1') achPayNow(a, TODAY, AE.mode); if(AE.stocker==='1' && a.items.length) achToStock(a); }
+  const tot=sum(AE.items,i=>(+i.q||0)*(+i.prix||0)); const montant=(+AE.montant && !(AE._t0 && Math.abs(+AE.montant-AE._t0)<1e-6))?+AE.montant:(tot||+AE.montant); if(!(montant>0)) return toast('Tapez le montant');
+  if(AE.items.some(i=>!i.sid&&!String(i.nom||'').trim())) return toast('Choisissez ou tapez le nom de chaque article');
+  const fn=AE.four.trim(); let f=FOURS().find(x=>x.nom===fn); if(!f){ f={nom:fn}; FOURS().push(f); } if(AE.tel!==undefined) f.tel=String(AE.tel||'').trim(); if(AE.adr!==undefined) f.adr=String(AE.adr||'').trim();
+  const data={date:AE.date, four:fn, doc:AE.doc, num:String(AE.num||'').trim(), montant, usage:AE.usage||'', note:AE.note||'', items:AE.items.filter(i=>(+i.q||0)>0).map(i=>({sid:i.sid||'', nom:i.nom||'', q:+i.q||0, prix:+i.prix||0}))};
+  let a; if(AE.id){ a=ACH().find(x=>x.id===AE.id); achUnstock(a); Object.assign(a,data); } else { a={id:uid('a'), ...data, stocked:0}; ACH().push(a); }
+  if(a.items.length) achToStock(a);   // toujours ajouté automatiquement au stock
+  let c=achCaisse(a);
+  if(AE.paye==='1'){ if(c) Object.assign(c,{montant, date:AE.pdate||TODAY, rq:AE.mode||'', libelle:achLib(a)}); else achPayNow(a, AE.pdate||TODAY, AE.mode); }
+  else if(c) S.caisse=S.caisse.filter(x=>x!==c);
   closeModal(); render(); toast('Achat enregistré ✔');
 }
-const achLib = a => `Achat ${a.four}${a.num?' – '+(a.doc||'').split(' ')[0]+' N° '+a.num:''}`;
+const achLib = a => `Achat ${a.four}${a.usage?' ('+a.usage+')':''}${a.num?' – '+(a.doc||'').split(' ')[0]+' N° '+a.num:''}`;
 function achPayNow(a, date, mode){ S.caisse.push({id:uid('c'), sens:'out', compte:'academie', cat:'Achat matériel', libelle:achLib(a), montant:+a.montant||0, date, rq:mode||'', refAchat:a.id}); }
-function achPay(id){ const a=ACH().find(x=>x.id===id);
-  formModal('💵 Payer – '+a.four+' ('+dt(+a.montant||0)+')', [{k:'date',label:'Date du paiement',type:'date',req:1},{k:'mode',label:'Comment ?',type:'select',options:MODES},{k:'montant',label:'Montant payé (DT)',type:'number',req:1}],
-  {date:TODAY, mode:'Espèces', montant:a.montant}, fd => { a.montant=+fd.montant||a.montant; achPayNow(a, fd.date, fd.mode); }); }
 function achToStock(a){
   a.items.forEach(i=>{ let s=i.sid?stk(i.sid):null;
     if(!s){ s={id:uid('st'), nom:i.nom.trim(), cat:catOf(i.nom), prix:i.prix||0, type:'projet', qte:0, panne:0, seuil:0, init:0, sortie:0, catOk:1}; s.ref=genRef(s.nom); S.stock.push(s); i.sid=s.id; }
-    if(i.prix) s.prix=i.prix; stkMove(s,'in',i.q,a.date,`Achat ${a.four}${a.num?' N° '+a.num:''}`,a.id,a.four); });
+    if(i.prix) s.prix=i.prix; stkMove(s,'in',i.q,a.date,`Achat ${a.four}${a.num?' N° '+a.num:''}${a.usage?' · '+a.usage:''}`,a.id,a.four); });
   a.stocked=1;
 }
-function achStock(id){ const a=ACH().find(x=>x.id===id); if(!confirm('Ajouter les '+a.items.length+' composant(s) de cet achat au stock ?')) return; achToStock(a); render(); toast('Composants ajoutés au stock ✔'); }
 function achDel(id){ const a=ACH().find(x=>x.id===id); if(!confirm('Supprimer cet achat ?'+(achCaisse(a)?' (le paiement sera retiré de la caisse)':'')+(a.stocked?' (les quantités ajoutées au stock seront retirées)':''))) return;
   S.caisse=S.caisse.filter(x=>x.refAchat!==id);
-  if(a.stocked) S.stock.forEach(s=>{ (s.mv||[]).filter(m=>m.ach===id).forEach(m=>{ s.init=Math.max(0,(s.init||0)-m.q); }); s.mv=(s.mv||[]).filter(m=>m.ach!==id); s.qte=Math.max(0,(s.init||0)-(s.sortie||0)); });
+  achUnstock(a);
   TDEF().achats=ACH().filter(x=>x.id!==id); closeModal(); render(); toast('Achat supprimé'); }
 
 /* ---------------- ÉLÈVES ---------------- */
