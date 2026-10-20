@@ -1214,7 +1214,7 @@ VIEWS.caisse = () => {
   return `<div class="toolbar">${sel}<label class="small" style="display:flex;gap:6px;align-items:center;margin-left:8px"><input type="checkbox" ${F_C.detail?'checked':''} onchange="F_C.detail=this.checked;render()"> Détail par élève</label>
     <span class="sp"></span><button class="btn g" onclick="mvt('in')">+ Recette</button><button class="btn" onclick="mvt('out')">+ Dépense</button></div>
   <div class="grid kpis">
-    <div class="kpi g"><div class="l">Recettes</div><div class="v">${dt(sc.rin)}</div></div>
+    <div class="kpi g"><div class="l">Recettes</div><div class="v">${dt(sc.rin)}</div>${recDetail(recL)}</div>
     <div class="kpi" style="border-left-color:var(--bad)"><div class="l">Dépenses</div><div class="v">${dt(sc.rout)}</div></div>
     <div class="kpi b"><div class="l">Solde ${compte==='projet'?'caisse Projet':compte==='masterclass'?'caisse Master class':compte==='competition'?'caisse Compétitions':'de la période'}</div><div class="v" style="color:${sc.solde<0?'var(--bad)':'var(--green)'}">${dt(sc.solde)}</div></div>
     ${compte==='academie'?`<div class="kpi p"><div class="l">Solde total de la caisse</div><div class="v" style="color:${total.solde<0?'var(--bad)':'inherit'}">${dt(total.solde)}</div><div class="s">Tous trimestres</div></div>`:''}
@@ -1233,6 +1233,11 @@ VIEWS.caisse = () => {
 };
 
 const recCat = x => x.col==='insc'?"Frais d'inscription":x.col==='comp'?'Compétiteurs':x.col==='projet'?'Projet 1+2':x.col==='compet'?'Frais compétition':x.col==='mc'?'Master class':'Abonnements (mois)';
+
+function recDetail(L){ const G={}; L.forEach(r=>{ const k=r.grp||(r.auto?'Abonnements (mois)':'Autres recettes'); G[k]=(G[k]||0)+(+r.montant||0); });
+  const ORD=['Abonnements (mois)',"Frais d'inscription",'Compétiteurs','Projet 1+2','Frais compétition','Master class','Autres recettes'];
+  const keys=Object.keys(G).sort((a,b)=>{ const i=ORD.indexOf(a), j=ORD.indexOf(b); return (i<0?99:i)-(j<0?99:j); });
+  return keys.length?`<div style="margin-top:8px;font-size:13px;line-height:1.7">${keys.map(k=>`<div style="display:flex;gap:8px"><span>${h(k.replace(' (mois)',''))}</span><span style="flex:1;border-bottom:1px dotted #cbd5e1;margin-bottom:6px"></span><b>${dt(G[k])}</b></div>`).join('')}</div>`:''; }
 function recSections(L,row){
   const ORD=['Abonnements (mois)',"Frais d'inscription",'Compétiteurs','Projet 1+2','Frais compétition','Master class'], G={};
   L.forEach(r=>{ const k=r.grp||(r.auto?'Abonnements (mois)':'Autres recettes'+(r.cat?' – '+r.cat:'')); (G[k]=G[k]||[]).push(r); });
