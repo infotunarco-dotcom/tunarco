@@ -1200,8 +1200,8 @@ VIEWS.caisse = () => {
   const sel = `<select style="font-weight:600;min-width:240px" onchange="F_C.tab=this.value;render()">${[['T1','ETAT DE CAISSE T1'],['T2','ETAT DE CAISSE T2'],['T3','ETAT DE CAISSE T3'],['projet','ETAT DE CAISSE Projet'],['competition','ETAT DE CAISSE Compétitions'],['masterclass','ETAT DE CAISSE Master class']].map(([v,l])=>`<option value="${v}" ${F_C.tab===v?'selected':''}>${l}</option>`).join('')}</select>`;
   const auto = recettesAuto(compte, t);
   let recL = [];
-  if(F_C.detail) recL = auto.map(x=>({date:x.date, libelle:`${colLabel(x.trim,x.col)} – ${elv(x.eleve)?.nom||'?'}`, montant:x.montant, rq:x.mode, auto:1}));
-  else { const g={}; auto.forEach(x=>{ const cat = x.col==='insc'?'Frais d\'inscription':x.col==='comp'?'Compétiteurs':x.col==='projet'?'Projet 1+2':x.col==='compet'?'Frais '+colLabel(x.trim,x.col):x.col==='mc'?'Master class '+colLabel(x.trim,x.col):'Abonnements'; const k=x.date+'|'+cat; (g[k]=g[k]||{date:x.date,libelle:cat,montant:0,n:0,auto:1}); g[k].montant+=x.montant; g[k].n++; });
+  if(F_C.detail) recL = auto.map(x=>({date:x.date, libelle:`${colLabel(x.trim,x.col)} – ${elv(x.eleve)?.nom||'?'}`, montant:x.montant, rq:x.mode, auto:1, grp:recCat(x)}));
+  else { const g={}; auto.forEach(x=>{ const cat = x.col==='insc'?'Frais d\'inscription':x.col==='comp'?'Compétiteurs':x.col==='projet'?'Projet 1+2':x.col==='compet'?'Frais '+colLabel(x.trim,x.col):x.col==='mc'?'Master class '+colLabel(x.trim,x.col):'Abonnements'; const k=x.date+'|'+cat; (g[k]=g[k]||{date:x.date,libelle:cat,montant:0,n:0,auto:1,grp:recCat(x)}); g[k].montant+=x.montant; g[k].n++; });
     recL = Object.values(g).map(r=>({...r, libelle:`${r.libelle} (${r.n} paiement${r.n>1?'s':''})`})); }
   const manIn = S.caisse.filter(c=>c.compte===compte && c.sens==='in' && inT(c.date,t,compte));
   const manOut = S.caisse.filter(c=>c.compte===compte && c.sens==='out' && inT(c.date,t,compte));
@@ -1222,7 +1222,7 @@ VIEWS.caisse = () => {
 
   <div class="grid two" style="align-items:start">
     <div class="card tw" style="padding:0"><table class="ledger"><tr><th colspan="5" style="background:var(--green)">RECETTES <span style="float:right;font-weight:400">${recL.length} ligne(s)</span></th></tr><tr><th>Date</th><th>Libellés</th><th class="num">Montant</th><th>RQ</th><th></th></tr>
-      ${recL.map(row).join('')||'<tr><td colspan="5" class="empty">Aucune recette.</td></tr>'}
+      ${recSections(recL,row)||'<tr><td colspan="5" class="empty">Aucune recette.</td></tr>'}
       <tr class="tot"><td></td><td>TT</td><td class="num">${dt(sc.rin)}</td><td colspan="2"></td></tr></table></div>
     <div><div class="card tw" style="padding:0"><table class="ledger"><tr><th colspan="5" style="background:var(--bad)">DÉPENSES <span style="float:right;font-weight:400">${depL.length} ligne(s)</span></th></tr><tr><th>Date</th><th>Libellés</th><th class="num">Montant</th><th>RQ</th><th></th></tr>
       ${depL.map(row).join('')||'<tr><td colspan="5" class="empty">Aucune dépense.</td></tr>'}
@@ -1231,6 +1231,14 @@ VIEWS.caisse = () => {
       <div class="card"><h3>Dépenses par catégorie</h3>${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div style="margin-bottom:10px"><div class="small" style="display:flex"><span>${h(k)}</span><span style="flex:1"></span><b>${dt(v)}</b></div><div class="bar"><i style="width:${v/maxC*100}%;background:var(--orange)"></i></div></div>`).join('')||'<div class="empty">—</div>'}</div></div>
   </div>`;
 };
+
+const recCat = x => x.col==='insc'?"Frais d'inscription":x.col==='comp'?'Compétiteurs':x.col==='projet'?'Projet 1+2':x.col==='compet'?'Frais compétition':x.col==='mc'?'Master class':'Abonnements (mois)';
+function recSections(L,row){
+  const ORD=['Abonnements (mois)',"Frais d'inscription",'Compétiteurs','Projet 1+2','Frais compétition','Master class'], G={};
+  L.forEach(r=>{ const k=r.grp||(r.auto?'Abonnements (mois)':'Autres recettes'+(r.cat?' – '+r.cat:'')); (G[k]=G[k]||[]).push(r); });
+  const keys=Object.keys(G).sort((a,b)=>{ const i=ORD.indexOf(a), j=ORD.indexOf(b); return (i<0?99:i)-(j<0?99:j) || a.localeCompare(b); });
+  return keys.map(k=>`<tr><td colspan="5" style="background:#e8f5ee;font-weight:700;color:#156b3a">${h(k)}</td></tr>${G[k].map(row).join('')}<tr><td></td><td class="small" style="text-align:right"><b>Sous-total ${h(k)}</b></td><td class="num"><b>${dt(sum(G[k],r=>+r.montant||0))}</b></td><td colspan="2"></td></tr>`).join('');
+}
 function mvt(sens, id){
   const c0 = id ? S.caisse.find(x=>x.id===id) : null;
   const compte = c0 ? c0.compte : F_C.tab==='projet'?'projet':F_C.tab==='competition'?'competition':F_C.tab==='masterclass'?'masterclass':'academie';
