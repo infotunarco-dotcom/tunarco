@@ -286,6 +286,7 @@ select.ein.st-ess{background:#ffe699;color:#7f6000;font-weight:600} select.ein.s
         <div class="id"><b id="who-name"></b><span id="who-role"></span></div><div class="av" id="who-av"></div>
         <div class="links">
           <a id="lk-perso" onclick="goPerso()" title="Ajouter / modifier les listes, colonnes et menus du site" style="background:#fff1dc;color:#b56b00">🛠️<span> Modifier le site</span></a>
+          <a id="lk-sync" onclick="syncNow()" title="Envoyer toutes les données vers les fichiers Google Sheets (Présence, Paiement, Base de données)" style="background:#e3f6ea;color:#156b3a">🔄<span> Synchroniser</span></a>
           <a id="lk-save" onclick="exportData()" title="Sauvegarder les données">💾<span> Sauvegarder</span></a>
           <a id="lk-load" onclick="document.getElementById('imp').click()" title="Charger une sauvegarde">📂<span> Charger</span></a>
           <a class="out" onclick="logout()" title="Se déconnecter">⎋</a>
@@ -713,6 +714,10 @@ function syncFlush(){
     .then(()=>{ SYNC.busy=false; syncSetMsg('✔ Synchronisé avec Google Sheets à '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})); if(SYNC.queue.length) setTimeout(syncFlush,500); })
     .catch(()=>{ SYNC.busy=false; SYNC.queue.unshift(...batch); syncSetMsg('⚠ Pas de connexion – nouvel essai dans 30 s'); setTimeout(syncFlush,30000); });
 }
+function syncNow(){ if(!(CLOUD.url||(S.sync||{}).url)) return toast('Aucun serveur configuré');
+  const snap=syncSnapshot(); SYNC.base=snap; SYNC.queue.push(...Object.values(snap)); syncFlush();
+  const b=$('#lk-sync'); if(b){ b.innerHTML='⏳<span> Envoi…</span>'; const chk=setInterval(()=>{ if(!SYNC.busy&&!SYNC.queue.length){ clearInterval(chk); b.innerHTML='✔<span> Synchronisé</span>'; toast('✔ Fichiers Google Sheets à jour'); setTimeout(()=>b.innerHTML='🔄<span> Synchroniser</span>',4000); } },700); }
+  toast('🔄 Envoi de '+Object.keys(snap).length+' lignes vers Google Sheets…'); }
 function syncAll(){ if(!(CLOUD.url||(S.sync||{}).url)) return toast('Aucun serveur configuré'); if(!confirm('Envoyer toutes les présences et tous les paiements vers Google Sheets ?')) return; const snap=syncSnapshot(); SYNC.base=snap; SYNC.queue.push(...Object.values(snap)); syncFlush(); toast(Object.keys(snap).length+' lignes envoyées'); }
 /* ===== MODE EN LIGNE (serveur Google privé) ===== */
 const CLOUD_DEFAULT='https://script.google.com/macros/s/AKfycbwVgZMRvTyGzxuqBxQ2mobPeFOvMIzSbXsiE2veeWvXXQjJC1djJWLAKb2f7TOBJH4ktA/exec';
