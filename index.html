@@ -1255,10 +1255,10 @@ VIEWS.charges = () => {
   setHead('Charges du mois', 'Loyers, salaires, factures…');
   const prev=sum(due,c=>+c.montant||0), paye=sum(due,c=>chPaid(c,ym)?.montant||0), reste=due.filter(c=>!chPaid(c,ym));
   const row = c => { const p=chPaid(c,ym);
-    return `<tr style="${p?'background:#f3fbf6':''}"><td style="font-size:15px"><b>${h(c.lib)}</b>${c.freq==='T'?' <span class="small muted">(trimestre)</span>':''}${c.variable?'<div class="small" style="color:#8a5a00">Montant à vérifier</div>':''}</td>
+    return `<tr style="${p?'background:#f3fbf6':''}"><td style="font-size:15px"><b>${h(c.lib)}</b>${c.freq==='T'?' <span class="small muted">(trimestre)</span>':''}<div class="small muted">à payer le ${fmtD(ym+'-'+String(c.jour||15).padStart(2,'0'))}</div>${c.variable?'<div class="small" style="color:#8a5a00">Montant à vérifier</div>':''}</td>
       <td class="num" style="font-size:15px"><b>${dt(p?p.montant:+c.montant||0)}</b></td>
       <td>${p?`<span style="color:#156b3a;font-weight:700">✔ Payé le ${fmtD(p.date)}</span>`:`<span style="color:#b42318;font-weight:700">✖ Pas encore payé</span>`}</td>
-      <td style="white-space:nowrap;text-align:right">${p?`<button class="btn sm r" onclick="chUnpay('${c.id}')">Annuler</button>`:`<button class="btn" onclick="chPay('${c.id}')">💵 Payer</button>`} <button class="btn sm g" onclick="chEdit('${c.id}')">✏️ Modifier</button></td></tr>`; };
+      <td style="white-space:nowrap;text-align:right">${p?`<button class="btn sm" onclick="chPay('${c.id}')">✏️ Date / montant</button> <button class="btn sm r" onclick="chUnpay('${c.id}')">Annuler</button>`:`<button class="btn" onclick="chPay('${c.id}')">💵 Payer</button>`} <button class="btn sm g" onclick="chEdit('${c.id}')">✏️ Modifier</button></td></tr>`; };
   return `<div class="alert info small" style="display:block">👉 Choisissez le mois, puis cliquez sur <b>💵 Payer</b> quand vous payez une charge. Le montant passe tout seul dans la <b>caisse</b> (dépenses).</div>
   <div class="toolbar"><b>Mois :</b> <select style="font-weight:700;min-width:200px;font-size:15px" onchange="F_CH.mois=this.value;render()">${L.map(m=>`<option value="${m}" ${m===ym?'selected':''}>${chLabel(m)}</option>`).join('')}</select>
     <span class="sp"></span><button class="btn g" onclick="chEdit()">+ Ajouter une charge</button></div>
@@ -1277,6 +1277,7 @@ function chEdit(id){
   formModal(c0?'Modifier la charge':'Nouvelle charge', [
     {k:'lib',label:'Libellé',full:1,req:1},{k:'montant',label:'Montant (DT)',type:'number',req:1},
     {k:'freq',label:'Quand ?',type:'select',options:[['M','Chaque mois'],['T','Chaque trimestre']]},
+    {k:'jour',label:'Jour du mois pour payer (ex : 15)',type:'number'},
     {k:'mois',label:'Si trimestre : numéros des mois (1=janv., 4=avril, 7=juil., 10=oct.)'},
     {k:'cat',label:'Catégorie dans la caisse',type:'select',options:CAT_OUT},
     {k:'variable',label:'Le montant change ?',type:'select',options:[['0','Non, toujours le même'],['1','Oui, à vérifier à chaque fois']]},
@@ -1323,10 +1324,12 @@ function stkHist(id){
   const s=stk(id), L=[...(s.mv||[])].sort((a,b)=>b.d.localeCompare(a.d));
   openModal(mHead('🕘 Historique – '+h(s.nom)) + `<div class="small muted" style="margin-bottom:8px">Réf. ${h(s.ref)} · en stock : <b>${(s.init||0)-(s.sortie||0)}</b></div>
     <div class="tw"><table><tr><th>Date</th><th>Mouvement</th><th class="num">Qté</th><th>Remarque</th><th></th></tr>
-    ${L.map(m=>`<tr><td>${fmtD(m.d)}</td><td>${m.t==='in'?'<b style="color:var(--green)">📥 Entrée</b>':'<b style="color:var(--bad)">📤 Sortie</b>'}</td><td class="num"><b>${m.q}</b></td><td class="small">${m.four&&!String(m.note||'').includes(m.four)?'<b>'+h(m.four)+'</b> ':''}${h(m.note||'')}${m.t==='in'&&isAdmin()?(m.ach?' <span class="muted">(voir Achats)</span>':` <a style="cursor:pointer;font-weight:700;color:${m.paye==='non'?'#b42318':m.paye==='oui'?'#156b3a':'#888'}" title="Cliquer pour changer" onclick="stkMvPaye('${s.id}','${m.id}')">${m.paye==='non'?'✖ Non payé':m.paye==='oui'?'✔ Payé':'payé ? —'}</a>`):''}</td>
+    ${L.map(m=>`<tr><td><input type="date" value="${m.d}" style="padding:3px 6px" onchange="stkMvSet('${s.id}','${m.id}','d',this.value)"></td><td>${m.t==='in'?'<b style="color:var(--green)">📥 Entrée</b>':'<b style="color:var(--bad)">📤 Sortie</b>'}</td><td class="num"><input type="number" value="${m.q}" style="width:70px;padding:3px 6px" ${m.ach?'disabled title="Modifier depuis la page Achats"':''} onchange="stkMvSet('${s.id}','${m.id}','q',this.value)"></td><td class="small">${m.four&&!String(m.note||'').includes(m.four)?'<b>'+h(m.four)+'</b> ':''}${h(m.note||'')}${m.t==='in'&&isAdmin()?(m.ach?' <span class="muted">(voir Achats)</span>':` <a style="cursor:pointer;font-weight:700;color:${m.paye==='non'?'#b42318':m.paye==='oui'?'#156b3a':'#888'}" title="Cliquer pour changer" onclick="stkMvPaye('${s.id}','${m.id}')">${m.paye==='non'?'✖ Non payé':m.paye==='oui'?'✔ Payé':'payé ? —'}</a>`):''}</td>
       <td><button class="btn sm r" title="Supprimer ce mouvement" onclick="stkMvDel('${s.id}','${m.id}')">🗑</button></td></tr>`).join('')||'<tr><td colspan="5" class="empty">Aucun mouvement enregistré.</td></tr>'}</table></div>
     <div class="mfoot"><button class="btn g" onclick="closeModal()">Fermer</button></div>`);
 }
+function stkMvSet(sid,mid,k,v){ const s=stk(sid), m=(s.mv||[]).find(x=>x.id===mid); if(!m) return;
+  if(k==='q'){ const d=(+v||0)-m.q; if(m.t==='in') s.init=Math.max(0,(s.init||0)+d); else s.sortie=Math.max(0,(s.sortie||0)+d); m.q=+v||0; s.qte=Math.max(0,(s.init||0)-(s.sortie||0)); } else m[k]=v; render(); stkHist(sid); toast('Modifié ✔'); }
 function stkMvPaye(sid,mid){ const m=(stk(sid).mv||[]).find(x=>x.id===mid); m.paye=m.paye==='oui'?'non':m.paye==='non'?'':'oui'; render(); stkHist(sid); }
 function stkMvDel(sid, mid){ const s=stk(sid), m=(s.mv||[]).find(x=>x.id===mid); if(!m||!confirm('Supprimer ce mouvement ? (la quantité est corrigée)')) return;
   if(m.t==='in') s.init=Math.max(0,(s.init||0)-m.q); else s.sortie=Math.max(0,(s.sortie||0)-m.q); s.qte=Math.max(0,(s.init||0)-(s.sortie||0)); s.mv=s.mv.filter(x=>x!==m); render(); stkHist(sid); }
