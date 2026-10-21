@@ -452,7 +452,7 @@ const tarifOf = e => +e.tarif || TDEF().mois;
 const inscOf = e => (e.insc===''||e.insc==null) ? TDEF().insc : +e.insc||0;
 const attenduCol = (e,t,col) => { const o=((e.prevu||{})[t]||{})[col]; return (o!==undefined && o!=='' && o!==null) ? +o : attenduCol0(e,t,col); };
 const attenduCol0 = (e,t,col) => col==='insc' ? inscOf(e) : /^m\d$/.test(col) ? tarifOf(e) : col==='comp' ? ((isCompetiteur(e)||+e.prixComp) ? (+e.prixComp||100) : 0) : 0;
-function duOf(e,t){ const o=e['du'+t]; if(o!==null && o!==undefined && o!=='') return +o; return (TRIMS[t].insc?attenduCol(e,t,'insc'):0) + attenduCol(e,t,'m1') + attenduCol(e,t,'m2') + attenduCol(e,t,'m3'); }
+function duOf(e,t){ if(e.gratuit) return 0; const o=e['du'+t]; if(o!==null && o!==undefined && o!=='') return +o; return (TRIMS[t].insc?attenduCol(e,t,'insc'):0) + attenduCol(e,t,'m1') + attenduCol(e,t,'m2') + attenduCol(e,t,'m3'); }
 function situation(e,t){
   const paye = sum(['insc','m1','m2','m3'], c=>cellSum(e.id,t,c));
   const comp = cellSum(e.id,t,'comp');
@@ -463,7 +463,7 @@ function situation(e,t){
   MOIS_START[t].forEach((m,i)=>{ if(TODAY > addDays(m,9)) echu += attenduCol(e,t,'m'+(i+1)); });
   echu = Math.min(echu, du);
   const retard = Math.max(0, echu-paye);
-  const statut = du<=0 ? 'Tarif ?' : paye>=du ? 'Réglé' : paye===0 ? 'Non payé' : 'Partiel';
+  const statut = e.gratuit ? 'Gratuit' : du<=0 ? 'Tarif ?' : paye>=du ? 'Réglé' : paye===0 ? 'Non payé' : 'Partiel';
   return {paye, comp, du, reste, retard, statut};
 }
 const projetPaye = eid => sum(S.tx.filter(x=>x.eleve===eid && x.col==='projet'), x=>x.montant);
@@ -953,7 +953,7 @@ function payTrim(t){
         ${cols.map(([c])=>{ const v=cellSum(e.id,t,c), a=attenduCol(e,t,c); const cls = !v?'':c==='comp'?'comp':(v>=a?'full':'part');
           return `<td><span class="cell ${cls}" onclick="payGrid('${e.id}','${t}','${c}')">${v?dt(v):'—'}</span></td>`; }).join('')}
         <td class="tt">${dt(s.paye)}</td>
-        <td class="tt">${s.du<=0?badge('Tarif ?','b-mut'):s.reste>0?badge(dt(s.reste), s.retard>0?'b-bad':'b-warn'):badge('Réglé','b-ok')}</td>
+        <td class="tt">${e.gratuit?badge('Gratuit','b-ok'):s.du<=0?badge('Tarif ?','b-mut'):s.reste>0?badge(dt(s.reste), s.retard>0?'b-bad':'b-warn'):badge('Réglé','b-ok')}</td>
         <td><select onchange="setF('${e.id}','mode',this.value)"><option value="">—</option>${MODES.map(m=>`<option ${e.mode===m?'selected':''}>${m}</option>`).join('')}</select></td>
         <td><input class="rq" value="${h(e.rq)}" placeholder="—" onchange="setF('${e.id}','rq',this.value)"></td>
         <td><select onchange="setF('${e.id}','type',this.value)"><option value="">—</option>${TYPES.map(m=>`<option ${e.type===m?'selected':''}>${m}</option>`).join('')}</select></td>
@@ -965,7 +965,7 @@ function payTrim(t){
   const totCol = c => sum(list, x=>cellSum(x.e.id,t,c));
   const nType = ty => list.filter(x=>x.e.type===ty).length;
   const moisCols=[...(TRIMS[t].insc?[['insc',"Frais d'inscription"]]:[]),...MOIS_START[t].map((m,i)=>['m'+(i+1),MOIS_L[+m.slice(5,7)-1].charAt(0)+MOIS_L[+m.slice(5,7)-1].slice(1).toLowerCase()])];
-  const resteCol=c=>{ let m=0,n=0; S.eleves.filter(e=>e.statut!=='Abandon'&&e.statut!=='Externe').forEach(e=>{ const r=Math.max(0,attenduCol(e,t,c)-cellSum(e.id,t,c)); if(r>0){m+=r;n++;} }); return {m,n}; };
+  const resteCol=c=>{ let m=0,n=0; S.eleves.filter(e=>e.statut!=='Abandon'&&e.statut!=='Externe'&&!e.gratuit).forEach(e=>{ const r=Math.max(0,attenduCol(e,t,c)-cellSum(e.id,t,c)); if(r>0){m+=r;n++;} }); return {m,n}; };
   const echus=[...(TRIMS[t].insc&&TODAY>addDays(TRIMS[t].debut,9)?["inscription"]:[]),...MOIS_START[t].filter(m=>TODAY>addDays(m,9)).map(m=>MOIS_L[+m.slice(5,7)-1].toLowerCase())];
   return `
   <div class="alert info" style="display:block;margin-bottom:12px"><b>📌 Reste à payer par mois (${h(TRIMS[t].nom)})</b>
@@ -1569,12 +1569,12 @@ function editEleve(id){
     ...(CHAMPS().length?[{sec:'Autres informations'},...CHAMPS().map((c,ci)=>({k:'cf_'+ci,label:c}))]:[]),
     {sec:'Paiement'},
     {k:'type',label:'Type de paiement',type:'select',options:['',...TYPES]},{k:'mode',label:'Mode habituel',type:'select',options:['',...MODES]},
-    {k:'tarif',label:'Mensualité (DT)',type:'number'},{k:'insc',label:'Frais d\'inscription (DT)',type:'number'},
+    {k:'gratuit',label:'Gratuit ?',type:'select',options:[['','Non, paie normalement'],['1','Oui, gratuit (ne paie pas)']]},    {k:'tarif',label:'Mensualité (DT)',type:'number'},{k:'insc',label:'Frais d\'inscription (DT)',type:'number'},
     {k:'duT1',label:'Montant dû T1 (vide = calcul auto)',type:'number',ph:'auto'},{k:'duProjet',label:'Prix projet (vide = selon niveau)',type:'number',ph:'auto'},
     {k:'notes',label:'Remarques',type:'textarea',full:1},
-  ].filter(f=>isAdmin() || !(f.sec==='Paiement' || ['type','mode','tarif','insc','duT1','duProjet'].includes(f.k))).concat([]), {...e, ...Object.fromEntries(CHAMPS().map((c,ci)=>['cf_'+ci,(e.cf||{})[c]||'']))}, fd => {
+  ].filter(f=>isAdmin() || !(f.sec==='Paiement' || ['type','mode','tarif','insc','duT1','duProjet','gratuit'].includes(f.k))).concat([]), {...e, gratuit:e.gratuit?'1':'', ...Object.fromEntries(CHAMPS().map((c,ci)=>['cf_'+ci,(e.cf||{})[c]||'']))}, fd => {
     const cf={...(e.cf||{})}; CHAMPS().forEach((c,ci)=>{ cf[c]=fd['cf_'+ci]||''; delete fd['cf_'+ci]; }); fd.cf=cf;
-    if(!isAdmin()){ ['tarif','insc','duT1','duProjet','type','mode'].forEach(k=>delete fd[k]); } else { fd.tarif=+fd.tarif||0; fd.insc=+fd.insc||0; } if(isAdmin()){ fd.duT1 = fd.duT1===''?null:+fd.duT1; fd.duProjet = fd.duProjet===''?null:+fd.duProjet; }
+    if(!isAdmin()){ ['tarif','insc','duT1','duProjet','type','mode','gratuit'].forEach(k=>delete fd[k]); } else { fd.tarif=+fd.tarif||0; fd.insc=+fd.insc||0; fd.gratuit=fd.gratuit?1:0; } if(isAdmin()){ fd.duT1 = fd.duT1===''?null:+fd.duT1; fd.duProjet = fd.duProjet===''?null:+fd.duProjet; }
     fd.jour = grp(fd.groupe).jour || e.jour;
     if(id) Object.assign(e, fd); else S.eleves.push({id:uid('e'), rq:'', ...fd});
   }, id&&isAdmin()?`<button type="button" class="btn r" style="margin-right:auto" onclick="del('eleves','${id}','${js(h(e.nom))}',x=>{S.tx=S.tx.filter(t=>t.eleve!==x)})">Supprimer</button>`:'');
