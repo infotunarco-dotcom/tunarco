@@ -673,10 +673,28 @@ function syncSnapshot(){
   const elRows=[...S.eleves].filter(e=>e.statut!=='Abandon'&&e.statut!=='Externe').sort((a,b)=>JOURS.indexOf(a.jour)-JOURS.indexOf(b.jour)||a.nom.localeCompare(b.nom))
     .map((e,i)=>[i+1,e.nom,e.naissance||'',ageOf(e)||'',e.niveau||'',e.ancien||'',e.statut,e.parent||'',e.tel1||'',e.tel2||'',e.email||'',e.jour||'',e.groupe?gLabel(grp(e.groupe)):'']);
   if(isAdmin()) snap['X|eleves']={k:'table', file:'base', tab:'Élèves (site)', rows:[['ÉLÈVES '+anLabel()+' – coordonnées (mis à jour automatiquement par le site de gestion)'],['N°','Nom et Prénom','Naissance','Âge','Niveau','Ancien/Nouveau','Statut','Parent','Tél 1','Tél 2','Email','Jour','Groupe'],...elRows], bold:[0,1]};
-  if(isAdmin()) S.caisse.filter(c=>c.compte==='academie'||c.compte==='projet'||c.compte==='masterclass').forEach(c=>{ snap['c|'+c.id]={k:'caisse', id:c.id, compte:c.compte, sens:c.sens, date:c.date, libelle:c.libelle, montant:+c.montant||0, rq:c.rq||''}; });
+  if(isAdmin()) ['T1','T2','T3'].forEach(t=>{ const T=caisseTable(t); snap['X|caisse'+t]={k:'table', file:'pay', tab:'ETAT DE CAISSE '+t, rows:T.rows, bold:T.bold}; });
+  if(isAdmin()) S.caisse.filter(c=>c.compte==='projet'||c.compte==='masterclass').forEach(c=>{ snap['c|'+c.id]={k:'caisse', id:c.id, compte:c.compte, sens:c.sens, date:c.date, libelle:c.libelle, montant:+c.montant||0, rq:c.rq||''}; });
   if(isAdmin()){ const T=achTables(); snap['X|achats']={k:'table', file:'pay', tab:'ACHATS', rows:T.ach, bold:[0,1,T.ach.length-1]}; snap['X|fours']={k:'table', file:'pay', tab:'FOURNISSEURS', rows:T.four, bold:[0,1]};
     snap['X|charges']={k:'table', file:'pay', tab:'CHARGES', rows:T.chg, bold:T.chgBold}; snap['X|stock']={k:'table', file:'base', tab:'STOCK (site)', rows:T.stk, bold:[0,1]}; }
   return snap;
+}
+
+function caisseTable(t){
+  const auto=recettesAuto('academie',t), manIn=S.caisse.filter(c=>c.compte==='academie'&&c.sens==='in'&&inT(c.date,t,'academie')), manOut=S.caisse.filter(c=>c.compte==='academie'&&c.sens==='out'&&inT(c.date,t,'academie')).sort((a,b)=>a.date.localeCompare(b.date));
+  const rec=[], bold=[0,1,2];
+  [['Abonnements (mois)',x=>['m1','m2','m3'].includes(x.col)],["Frais d'inscription",x=>x.col==='insc'],['Compétiteurs (à part)',x=>x.col==='comp']].forEach(([lib,f])=>{ const L=auto.filter(f); if(!L.length) return; const g={}; L.forEach(x=>{ g[x.date]=g[x.date]||{m:0,n:0}; g[x.date].m+=x.montant; g[x.date].n++; });
+    rec.push({h:lib}); Object.keys(g).sort().forEach(d=>rec.push([fmtD(d),lib.replace(' (à part)','')+' ('+g[d].n+' paiement'+(g[d].n>1?'s':'')+')',g[d].m,''])); rec.push({st:'Sous-total '+lib, m:sum(L,x=>x.montant)}); });
+  if(manIn.length){ rec.push({h:'Autres recettes'}); manIn.forEach(c=>rec.push([fmtD(c.date),c.libelle,+c.montant||0,c.rq||''])); }
+  const n=Math.max(rec.length, manOut.length), rows=[['ÉTAT DE CAISSE '+(TRIMS[t]?.nom||t).toUpperCase()+' – '+anLabel()+' (mis à jour automatiquement par le site)'],['Recettes','','','','Dépenses'],['Date','Libellés','Montant','RQ','Date','Libellés','Montant','RQ']];
+  for(let i=0;i<n;i++){ const r=rec[i], d=manOut[i]; let left=['','','',''];
+    if(r){ if(r.h){ left=['',r.h,'','']; } else if(r.st){ left=['',r.st,r.m,'']; } else left=r; }
+    rows.push([...left, ...(d?[fmtD(d.date),d.libelle,+d.montant||0,d.rq||'']:['','','',''])]); if(r&&(r.h||r.st)) bold.push(rows.length-1); }
+  const rin=sum(auto,x=>x.montant)+sum(manIn,c=>+c.montant||0), rout=sum(manOut,c=>+c.montant||0);
+  const ab=sum(auto.filter(x=>x.col!=='comp'),x=>x.montant)+sum(manIn,c=>+c.montant||0), cp=sum(auto.filter(x=>x.col==='comp'),x=>x.montant), vir=virAb(auto,manIn);
+  rows.push(['','TT',rin,'','','TT',rout,'']); bold.push(rows.length-1); rows.push([]);
+  [['Abonnements + inscriptions',ab],['− Virements (à la banque)',vir],['− Dépenses',rout],['= SOLDE CAISSE (sans compétiteurs ni virements)',ab-vir-rout],['Compétiteurs (à part, non compté)',cp]].forEach(([l,v])=>{ rows.push(['','','','','',l,Math.round(v*1000)/1000,'']); if(l.startsWith('=')) bold.push(rows.length-1); });
+  return {rows, bold};
 }
 function achTables(){
   const A=[...ACH()].sort((a,b)=>a.date.localeCompare(b.date));
@@ -703,7 +721,7 @@ function syncTick(){
   if(!SYNC.base){ syncInit(); return; }
   const now = syncSnapshot(), ops=[];
   Object.keys(now).forEach(k=>{ if(JSON.stringify(now[k])!==JSON.stringify(SYNC.base[k])) ops.push(now[k]); });
-  Object.keys(SYNC.base).forEach(k=>{ if(!now[k]){ const o={...SYNC.base[k]}; if(o.k==='pres') o.v=''; else if(o.k==='caisse') o.del=true; else ['insc','m1','m2','m3','comp'].forEach(c=>o[c]=0); ops.push(o); } });
+  Object.keys(SYNC.base).forEach(k=>{ if(!now[k]){ const o={...SYNC.base[k]}; if(o.k==='table'||(o.k==='caisse'&&o.compte==='academie')) return; if(o.k==='pres') o.v=''; else if(o.k==='caisse') o.del=true; else ['insc','m1','m2','m3','comp'].forEach(c=>o[c]=0); ops.push(o); } });
   SYNC.base = now;
   if(ops.length){ SYNC.queue.push(...ops); syncFlush(); }
 }
