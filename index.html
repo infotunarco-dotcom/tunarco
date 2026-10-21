@@ -424,7 +424,8 @@ const stCls = e => e.statut==='Abandon' ? 'st-quit' : (({'Ancien':'st-anc','Nouv
   });
 })();
 const LISTES = {MODES:['Modes de paiement',MODES], TYPES:['Types de paiement',TYPES], CAT_IN:['Catégories de recettes',CAT_IN], CAT_OUT:['Catégories de dépenses',CAT_OUT], CAT_COMP:['Catégories de dépenses compétition',CAT_COMP], STATUTS_PRES:['Statuts (Ancien / Nouveau…)',STATUTS_PRES]};
-function applyListes(){ const L=S.listes||{}; Object.entries(LISTES).forEach(([k,[,arr]])=>{ if(Array.isArray(L[k])&&L[k].length) arr.splice(0,arr.length,...L[k]); }); }
+function applyListes(){ const L=S.listes||{}; Object.entries(LISTES).forEach(([k,[,arr]])=>{ if(Array.isArray(L[k])&&L[k].length) arr.splice(0,arr.length,...L[k]); });
+  ['Facture comptable','Déclaration (impôts)','CNSS','Frais de déplacement','Loyer maison','Femme de ménage','Fournitures de bureau','Maintenance / réparation'].forEach(c=>{ if(!CAT_OUT.includes(c)) CAT_OUT.splice(Math.max(0,CAT_OUT.indexOf('Autre dépense')),0,c); }); }
 function saveListe(k){ S.listes=S.listes||{}; S.listes[k]=[...LISTES[k][1]]; }
 const ferieOf = d => S.feries.find(f=>d>=f.debut && d<=f.fin);
 const comp = id => S.competitions.find(c=>c.id===id);
@@ -1284,10 +1285,14 @@ function mvt(sens, id){
   if(compte==='competition' && sens==='out' && !id) return compDepense();
   const c = c0 || {sens, compte, date:TODAY};
   formModal((id?'Modifier – ':'')+(sens==='in'?'Recette':'Dépense'), [
-    {k:'date',label:'Date',type:'date',req:1},{k:'cat',label:'Catégorie',type:'select',options:sens==='in'?CAT_IN:compte==='competition'?CAT_COMP:CAT_OUT},
+    {k:'date',label:'Date',type:'date',req:1},{k:'cat',label:'Catégorie',type:'select',options:[...(sens==='in'?CAT_IN:compte==='competition'?CAT_COMP:CAT_OUT),['__new','➕ Ajouter une catégorie…']]},
     {k:'libelle',label:'Libellé',full:1,req:1},{k:'montant',label:'Montant (DT)',type:'number',req:1},{k:'mode',label:'Payé en',type:'select',options:MODES},{k:'rq',label:'RQ (remarque)'},
   ], {...c, mode:c.mode||payMode(c)}, fd => { fd.montant=+fd.montant; if(!(fd.montant>0)){toast('Montant invalide');return false;} if(id) Object.assign(c,fd); else S.caisse.push({id:uid('c'), sens, compte, ...fd}); });
+  catNewHook(sens==='in'?'CAT_IN':compte==='competition'?'CAT_COMP':'CAT_OUT', c.cat);
 }
+function catNewHook(lk, cur){ const sel=document.querySelector('#mform select[name=cat]'); if(!sel) return; let prev=sel.value;
+  sel.onchange=()=>{ if(sel.value!=='__new'){ prev=sel.value; return; } const n=(prompt('Nom de la nouvelle catégorie :')||'').trim(); const arr=LISTES[lk][1];
+    if(!n){ sel.value=prev; return; } if(!arr.includes(n)){ arr.push(n); saveListe(lk); } const o=document.createElement('option'); o.value=o.textContent=n; sel.insertBefore(o, sel.querySelector('option[value="__new"]')); sel.value=n; prev=n; toast('Catégorie « '+n+' » ajoutée ✔'); }; }
 
 /* ---------------- CHARGES FIXES (mensuelles / trimestrielles) – rangées dans S.tarifs (réservé admin) ---------------- */
 const CHG_DEF = [
