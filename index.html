@@ -963,12 +963,18 @@ function payTrim(t){
   });
   const totCol = c => sum(list, x=>cellSum(x.e.id,t,c));
   const nType = ty => list.filter(x=>x.e.type===ty).length;
+  const moisCols=[...(TRIMS[t].insc?[['insc',"Frais d'inscription"]]:[]),...MOIS_START[t].map((m,i)=>['m'+(i+1),MOIS_L[+m.slice(5,7)-1].charAt(0)+MOIS_L[+m.slice(5,7)-1].slice(1).toLowerCase()])];
+  const resteCol=c=>{ let m=0,n=0; S.eleves.filter(e=>e.statut!=='Abandon'&&e.statut!=='Externe').forEach(e=>{ const r=Math.max(0,attenduCol(e,t,c)-cellSum(e.id,t,c)); if(r>0){m+=r;n++;} }); return {m,n}; };
+  const echus=[...(TRIMS[t].insc&&TODAY>addDays(TRIMS[t].debut,9)?["inscription"]:[]),...MOIS_START[t].filter(m=>TODAY>addDays(m,9)).map(m=>MOIS_L[+m.slice(5,7)-1].toLowerCase())];
   return `
+  <div class="alert info" style="display:block;margin-bottom:12px"><b>📌 Reste à payer par mois (${h(TRIMS[t].nom)})</b>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${moisCols.map(([c,l])=>{ const r=resteCol(c); return `<div style="background:#fff;border:1px solid #dbe4f0;border-radius:10px;padding:8px 14px;min-width:150px"><div class="small muted">${h(l)}</div><div style="font-size:18px;font-weight:700;color:${r.m?'var(--bad)':'var(--green)'}">${dt(r.m)}</div><div class="small muted">${r.n?r.n+' adhérent(s)':'tout est payé ✔'}</div></div>`; }).join('')}</div>
+    <div class="small muted" style="margin-top:6px">« En retard » = seulement ce qui devait déjà être payé aujourd'hui (${echus.length?echus.join(' + '):'rien encore'}).</div></div>
   <div class="grid kpis">
     <div class="kpi"><div class="l">Attendu (${t})</div><div class="v">${dt(sum(all,s=>s.du))}</div><div class="s">${all.length} élèves</div></div>
     <div class="kpi g"><div class="l">Encaissé</div><div class="v">${dt(sum(all,s=>s.paye))}</div><div class="s">+ ${dt(sum(all,s=>s.comp))} compétiteurs</div></div>
     <div class="kpi o"><div class="l">Reste à payer</div><div class="v">${dt(sum(all,s=>s.reste))}</div><div class="s">${all.filter(s=>s.statut==='Non payé').length} non payé · ${all.filter(s=>s.statut==='Partiel').length} partiel</div></div>
-    <div class="kpi" style="border-left-color:var(--bad)"><div class="l">En retard (échéance le 10)</div><div class="v" style="color:var(--bad)">${dt(sum(all,s=>s.retard))}</div><div class="s">${all.filter(s=>s.retard>0).length} élève(s)</div></div>
+    <div class="kpi" style="border-left-color:var(--bad)"><div class="l">En retard au ${fmtD(TODAY).slice(0,5)} (échéance le 10)</div><div class="v" style="color:var(--bad)">${dt(sum(all,s=>s.retard))}</div><div class="s">${all.filter(s=>s.retard>0).length} élève(s)</div></div>
   </div>
   ${filtres()}
   <div class="card tw" style="padding:0;max-height:75vh;overflow:auto"><table class="ptable">
