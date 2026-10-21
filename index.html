@@ -662,7 +662,7 @@ function syncSnapshot(){
   S.seances.forEach(s=>{ const g=grp(s.groupe); Object.entries(s.presences).forEach(([eid,v])=>{ const e=elv(eid); if(e) snap['p|'+s.groupe+'|'+eid+'|'+s.date] = {k:'pres', jour:g.jour, comp:!!g.compet, nom:e.nom, date:s.date, v}; }); });
   if(isAdmin()) S.eleves.filter(e=>e.statut!=='Externe').forEach(e=>{ ['T1','T2','T3'].forEach(t=>{ const o={k:'pay', trim:t, nom:e.nom, jour:e.jour};
     ['insc','m1','m2','m3','comp'].forEach(c=>o[c]=cellSum(e.id,t,c)); if(t==='T1'){ o.mode=e.mode||''; o.rq=e.rq||''; o.type=e.type||''; }
-    if(o.insc||o.m1||o.m2||o.m3||o.comp||o.mode||o.rq||o.type) snap['m|'+e.id+'|'+t]=o; }); });
+    if(o.insc||o.m1||o.m2||o.m3||o.comp||o.mode||o.rq||o.type||(t===curTrim()&&e.statut!=='Abandon')) snap['m|'+e.id+'|'+t]=o; }); });
   // tableaux complets (recopiés tels quels dans des onglets dédiés)
   const mcs=[...MC()].sort((a,b)=>a.debut.localeCompare(b.debut));
   const payRows=[]; mcs.forEach(m=>m.eleves.forEach(id=>{ const e=elv(id); if(!e) return; const du=mcDu(m.id,id), pa=mcPaye(m.id,id);
