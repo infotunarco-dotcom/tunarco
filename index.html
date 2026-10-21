@@ -693,7 +693,7 @@ function caisseTable(t){
   const rin=sum(auto,x=>x.montant)+sum(manIn,c=>+c.montant||0), rout=sum(manOut,c=>+c.montant||0);
   const ab=sum(auto.filter(x=>x.col!=='comp'),x=>x.montant)+sum(manIn,c=>+c.montant||0), cp=sum(auto.filter(x=>x.col==='comp'),x=>x.montant), vir=virAb(auto,manIn);
   rows.push(['','TT',rin,'','','TT',rout,'']); bold.push(rows.length-1); rows.push([]);
-  [['Abonnements + inscriptions',ab],['− Virements (à la banque)',vir],['− Dépenses',rout],['= SOLDE CAISSE (sans compétiteurs ni virements)',ab-vir-rout],['Compétiteurs (à part, non compté)',cp]].forEach(([l,v])=>{ rows.push(['','','','','',l,Math.round(v*1000)/1000,'']); if(l.startsWith('=')) bold.push(rows.length-1); });
+  [['Abonnements + inscriptions',ab],['− Virements (à la banque)',vir],['− Dépenses',rout],['SOLDE CAISSE (sans compétiteurs ni virements)',ab-vir-rout],['Compétiteurs (à part, non compté)',cp]].forEach(([l,v])=>{ rows.push(['','','','','',l,Math.round(v*1000)/1000,'']); if(l.startsWith('SOLDE')) bold.push(rows.length-1); });
   return {rows, bold};
 }
 function achTables(){
