@@ -1221,8 +1221,7 @@ VIEWS.caisse = () => {
       const nonEsp=ab-espIn, depNonEsp=sc.rout-espOut, K=(TDEF().comptage||{})[F_C.tab], ecart=K?(+K.m||0)-esp:null;
       const L=(l,v,st='')=>`<div style="display:flex;gap:6px;${st}"><span>${l}</span><span style="flex:1"></span><b style="white-space:nowrap">${v}</b></div>`;
       return `<div class="kpi b"><div class="l">Solde caisse (sans compétiteurs ni virements)</div><div class="v" style="color:${reste<0?'var(--bad)':'var(--green)'}">${dt(reste)}</div>
-        <div style="margin-top:8px;font-size:13px;line-height:1.7">${L('Abonnements + inscriptions',dt(ab))}${vir?L('− Virements (à la banque)',dt(vir),'color:#64748b'):''}${L('− Dépenses',dt(sc.rout),'color:var(--bad)')}
-        ${L('🏆 Compétiteurs (à part, non compté)',dt(cp),'border-top:1px solid #cbd5e1;margin-top:4px;padding-top:4px;color:#64748b')}</div></div>
+        <div class="s">Détail du calcul en bas du tableau des dépenses ⬇</div></div>
       <div class="kpi p"><div class="l">💵 Argent liquide en caisse (espèces)</div><div class="v" style="color:${esp<0?'var(--bad)':'inherit'}">${dt(esp)}</div>
         <div style="margin-top:8px;font-size:13px;line-height:1.7">${L('Reçu en espèces',dt(espIn))}${L('− Dépenses payées en espèces',dt(espOut),'color:var(--bad)')}
         ${L('Chèques reçus',dt(nonEsp-virAb(auto,manIn)),'color:#64748b')}${L('Virements reçus (banque)',dt(virAb(auto,manIn)),'color:#64748b')}${depNonEsp?L('Dépenses payées par chèque / virement',dt(depNonEsp),'color:#64748b'):''}
@@ -1238,7 +1237,11 @@ VIEWS.caisse = () => {
     <div><div class="card tw" style="padding:0"><table class="ledger"><tr><th colspan="5" style="background:var(--bad)">DÉPENSES <span style="float:right;font-weight:400">${depL.length} ligne(s)</span></th></tr><tr><th>Date</th><th>Libellés</th><th class="num">Montant</th><th>RQ</th><th></th></tr>
       ${depL.map(row).join('')||'<tr><td colspan="5" class="empty">Aucune dépense.</td></tr>'}
       <tr class="tot"><td></td><td>TT</td><td class="num">${dt(sc.rout)}</td><td colspan="2"></td></tr>
-      ${compte==='academie'?(()=>{ const ab=sum(auto.filter(x=>x.col!=='comp'),x=>+x.montant||0)+sum(manIn,c=>+c.montant||0)-virAb(auto,manIn), r=ab-sc.rout; return `<tr class="tot"><td></td><td>Solde caisse <span class="small" style="font-weight:400">(sans compétiteurs ni virements)</span></td><td class="num" style="color:${r<0?'var(--bad)':'var(--green)'}">${dt(r)}</td><td colspan="2"></td></tr>`; })()
+      ${compte==='academie'?(()=>{ const ab=sum(auto.filter(x=>x.col!=='comp'),x=>+x.montant||0)+sum(manIn,c=>+c.montant||0), vir=virAb(auto,manIn), cp=sum(auto.filter(x=>x.col==='comp'),x=>+x.montant||0), r=ab-vir-sc.rout;
+        const R=(l,v,st='')=>`<tr><td></td><td style="${st}">${l}</td><td class="num" style="${st}">${v}</td><td colspan="2"></td></tr>`;
+        return R('Abonnements + inscriptions',dt(ab))+(vir?R('− Virements (à la banque)',dt(vir),'color:#64748b'):'')+R('− Dépenses',dt(sc.rout),'color:var(--bad)')
+          +`<tr class="tot"><td></td><td>= Solde caisse <span class="small" style="font-weight:400">(sans compétiteurs ni virements)</span></td><td class="num" style="font-size:16px;color:${r<0?'var(--bad)':'var(--green)'}">${dt(r)}</td><td colspan="2"></td></tr>`
+          +R('🏆 Compétiteurs (à part, non compté)',dt(cp),'color:#64748b'); })()
       :`<tr class="tot"><td></td><td>Solde caisse</td><td class="num" style="color:${sc.solde<0?'var(--bad)':'var(--green)'}">${dt(sc.solde)}</td><td colspan="2"></td></tr>`}</table></div>
       <div class="card"><h3>Dépenses par catégorie</h3>${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div style="margin-bottom:10px"><div class="small" style="display:flex"><span>${h(k)}</span><span style="flex:1"></span><b>${dt(v)}</b></div><div class="bar"><i style="width:${v/maxC*100}%;background:var(--orange)"></i></div></div>`).join('')||'<div class="empty">—</div>'}</div></div>
   </div>`;
