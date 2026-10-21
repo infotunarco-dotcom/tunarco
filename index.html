@@ -1222,11 +1222,7 @@ VIEWS.caisse = () => {
       const L=(l,v,st='')=>`<div style="display:flex;gap:6px;${st}"><span>${l}</span><span style="flex:1"></span><b style="white-space:nowrap">${v}</b></div>`;
       return `<div class="kpi b"><div class="l">Solde caisse (sans compétiteurs ni virements)</div><div class="v" style="color:${reste<0?'var(--bad)':'var(--green)'}">${dt(reste)}</div>
         <div class="s">Détail du calcul en bas du tableau des dépenses ⬇</div></div>
-      <div class="kpi p"><div class="l">💵 Argent liquide en caisse (espèces)</div><div class="v" style="color:${esp<0?'var(--bad)':'inherit'}">${dt(esp)}</div>
-        <div style="margin-top:8px;font-size:13px;line-height:1.7">${L('Reçu en espèces',dt(espIn))}${L('− Dépenses payées en espèces',dt(espOut),'color:var(--bad)')}
-        ${L('Chèques reçus',dt(nonEsp-virAb(auto,manIn)),'color:#64748b')}${L('Virements reçus (banque)',dt(virAb(auto,manIn)),'color:#64748b')}${depNonEsp?L('Dépenses payées par chèque / virement',dt(depNonEsp),'color:#64748b'):''}
-        <div style="border-top:1px solid #cbd5e1;margin-top:6px;padding-top:6px">${K?L('Comptage réel du '+fmtD(K.d),dt(+K.m||0))+L('Écart',(ecart>0?'+':'')+dt(ecart),'color:'+(Math.abs(ecart)<1?'var(--green)':'var(--bad)')):''}
-        <button class="btn sm g" style="margin-top:4px" onclick="caisseCompte()">🧮 ${K?'Modifier le comptage':'Saisir l\'argent compté'}</button></div></div></div>`; })()
+`; })()
     :`<div class="kpi b"><div class="l">Solde ${compte==='projet'?'caisse Projet':compte==='masterclass'?'caisse Master class':compte==='competition'?'caisse Compétitions':'de la période'}</div><div class="v" style="color:${sc.solde<0?'var(--bad)':'var(--green)'}">${dt(sc.solde)}</div></div>`}
   </div>
 
