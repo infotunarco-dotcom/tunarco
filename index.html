@@ -1609,7 +1609,7 @@ function ficheEleve(id){
     ${showPay?`<div class="card" style="margin:12px 0 0"><h3>Historique des versements</h3>
       ${txs.map(x=>`<div class="alert info small">${fmtD(x.date)} · ${h(TRIMS[x.trim]?x.trim:x.trim==='projet'?'Projet':'Compétition')} · ${h(colLabel(x.trim,x.col))} · ${h(x.mode)}<span class="sp"></span><b>${dt(x.montant)}</b><button class="btn sm g" onclick="recu('${x.id}')">🧾</button></div>`).join('')||'<div class="empty">Aucun versement.</div>'}
       ${comps.length?`<h3 style="margin-top:12px">Compétitions</h3><div class="chips">${comps.map(c=>`<span class="chip">🏆 ${h(c.nom)}</span>`).join('')}</div>`:''}</div>`:''}
-    <div class="mfoot">${isAdmin()?`<button class="btn g" onclick="editEleve('${id}')">✏️ Modifier</button>`:''}<button class="btn" onclick="closeModal()">Fermer</button></div>`, true);
+    <div class="mfoot"><button class="btn g" onclick="editEleve('${id}')">✏️ Modifier</button><button class="btn" onclick="closeModal()">Fermer</button></div>`, true);
 }
 const presBadge = v => v==='P'?badge('Présent','b-ok'):v==='A'?badge('Absent','b-bad'):v==='R'?badge('En retard','b-warn'):'—';
 
@@ -1814,9 +1814,9 @@ VIEWS.feuille = () => {
   const mineN = isAdmin()?0:S.groupes.filter(g=>g.formateur===S.session.id).length;
   let html = tabs + `<div class="toolbar">${mineN?`<button class="btn sm ${F_PT.mine?'o':'g'}" onclick="F_PT.mine=!F_PT.mine;render()">${F_PT.mine?'👤 Mes groupes':'👥 Tous les groupes'}</button>`:''}<select onchange="F_PT.jour=this.value;render()"><option value="">Tous les jours</option>${jours.map(j=>`<option ${F_PT.jour===j?'selected':''}>${j}</option>`).join('')}</select>
     <span class="legend" style="margin:0"><span><i style="background:var(--green)"></i>P présent</span><span><i style="background:var(--bad)"></i>A absent</span><span><i style="background:#cfd5dc"></i>Vacances / férié</span><span><i style="background:#e5e7eb;border:1px dashed #999"></i>A quitté le club</span></span>
-    <span class="sp"></span>${isAdmin()?`<button class="btn ${F_PT.edit?'gr':'o'}" onclick="F_PT.edit=!F_PT.edit;render()">${F_PT.edit?'✔ Terminer les modifications':'✏️ Modifier la feuille'}</button>`:''}
+    <span class="sp"></span><button class="btn ${F_PT.edit?'gr':'o'}" onclick="F_PT.edit=!F_PT.edit;render()">${F_PT.edit?'✔ Terminer les modifications':'✏️ Modifier la feuille'}</button>
     <button class="btn g" onclick="$('#printZone').innerHTML=$('#view').innerHTML;window.print()">🖨️ Imprimer</button></div>
-    ${F_PT.edit?`<div class="alert warn small">✏️ <b>Mode modification</b> : renommez les élèves directement · 🔀 déplacer / changer de groupe · 🚪 a quitté le club (reste en gris, ↩ pour réintégrer) · 🗑 supprimer définitivement · ✏️ / 🗑 sur la bande orange pour le groupe · « + Groupe » à côté du jour · cliquez sur une date pour la marquer jour férié / vacances (ou l'annuler).</div>`:''}`;
+    ${F_PT.edit?`<div class="alert warn small">✏️ <b>Mode modification</b> : renommez les élèves directement, changez l'âge · 🔀 déplacer / changer de groupe · 🚪 a quitté le club (reste en gris, ↩ pour réintégrer)${isAdmin()?' · 🗑 supprimer définitivement · ✏️ / 🗑 sur la bande orange pour le groupe · « + Groupe » à côté du jour · cliquez sur une date pour la marquer jour férié / vacances (ou l\'annuler)':''}.</div>`:''}`;
   JOURS.filter(j=>gs.some(g=>g.jour===j)).forEach(j=>{
     const dates = datesFor(j,t);
     // en-têtes mois / dates / S1..S5 ou VACANCES / FÉRIÉ
@@ -1827,7 +1827,7 @@ VIEWS.feuille = () => {
     let rows = '';
     gs.filter(g=>g.jour===j).forEach(g=>{
       const el = S.eleves.filter(e=>inG(e,g.id) && e.statut!=='Abandon');
-      rows += `<tr class="grp"><td colspan="5">${h(gLabel(g))}${g.niveau?' · '+h(g.niveau):''} <button class="gadd" onclick="addToGroup('${g.id}')">+ Ajouter un élève</button>${F_PT.edit?` <button class="gadd" onclick="editGroupe('${g.id}')">✏️ Groupe</button> <button class="gadd" onclick="delGroupe('${g.id}')">🗑</button>`:''}</td>
+      rows += `<tr class="grp"><td colspan="5">${h(gLabel(g))}${g.niveau?' · '+h(g.niveau):''} <button class="gadd" onclick="addToGroup('${g.id}')">+ Ajouter un élève</button>${F_PT.edit&&isAdmin()?` <button class="gadd" onclick="editGroupe('${g.id}')">✏️ Groupe</button> <button class="gadd" onclick="delGroupe('${g.id}')">🗑</button>`:''}</td>
         ${dates.map(d=>ferieOf(d)?`<td class="fer"></td>`:'<td></td>').join('')}<td colspan="3"></td></tr>`;
       el.forEach((e,i)=>{
         let P=0,A=0,Rr=0;
@@ -1836,15 +1836,15 @@ VIEWS.feuille = () => {
           const lt = lp ? 'S'+lp.n+' · '+h(lp.t) : (e.niveau&&e.niveau!=='À préciser' ? '—' : 'niveau ?');
           return `<td class="pc ${v} ${d===TODAY?'today':''} ${fer&&!v?'ferc':''}" data-d="${d}" title="${fer?h(fer.label)+' – vous pouvez quand même noter la présence':(lp?h('S'+lp.n+' · '+lp.t):lt)}"><select onchange="setPres('${g.id}','${e.id}','${d}',this.value,this)"><option value=""></option><option ${v==='P'?'selected':''}>P</option><option ${v==='A'?'selected':''}>A</option>${v==='R'?'<option selected>R</option>':''}</select>${v==='P'||v==='R'?`<div class="lec-ok">${lt}</div>`:v==='A'?`<div class="lec-ko">✖ ${lt}</div>${ratTag(g.id,e.id,d)}`:''}</td>`; }).join('');
         P+=Rr; const n=P+A, taux=n?Math.round(P/n*100):null;
-        rows += `<tr data-g="${g.id}"><td class="idx">${i+1}</td>${F_PT.edit?`<td class="nm2 ${stCls(e)}" style="white-space:nowrap"><input class="ein" style="width:150px;font-weight:600" value="${h(e.nom)}" onchange="elv('${e.id}').nom=this.value.trim();toast('Enregistré ✔')"> <button class="mini" title="Déplacer / modifier" onclick="editInGroup('${e.id}')">🔀</button>${e.groupe!==g.id?`<button class="mini" title="Retirer de ce groupe (reste dans son groupe principal)" onclick="rmExtra('${e.id}','${g.id}')">✖</button>`:`<button class="mini" title="A quitté le club" onclick="setStatutPres('${e.id}',QUIT)">🚪</button>`}<button class="mini r" title="Supprimer définitivement" onclick="delEleveDef('${e.id}')">🗑</button></td>`
-          :`<td class="nm2 ${stCls(e)}" onclick="${isAdmin()?`editInGroup('${e.id}')`:`fichePres('${e.id}')`}" title="Modifier / déplacer / retirer">${h(e.nom)} <span class="nmed">✏️</span></td>`}<td class="c">${F_PT.edit?`<input class="ein" type="number" min="3" max="20" style="width:52px" value="${ageOf(e)||''}" onchange="const x=elv('${e.id}'); if(!x.naissance){x.age=+this.value||'';} toast('Enregistré ✔')">`:(ageOf(e)||'')}</td>
+        rows += `<tr data-g="${g.id}"><td class="idx">${i+1}</td>${F_PT.edit?`<td class="nm2 ${stCls(e)}" style="white-space:nowrap"><input class="ein" style="width:150px;font-weight:600" value="${h(e.nom)}" onchange="elv('${e.id}').nom=this.value.trim();toast('Enregistré ✔')"> <button class="mini" title="Déplacer / modifier" onclick="editInGroup('${e.id}')">🔀</button>${e.groupe!==g.id?`<button class="mini" title="Retirer de ce groupe (reste dans son groupe principal)" onclick="rmExtra('${e.id}','${g.id}')">✖</button>`:`<button class="mini" title="A quitté le club" onclick="setStatutPres('${e.id}',QUIT)">🚪</button>`}${isAdmin()?`<button class="mini r" title="Supprimer définitivement" onclick="delEleveDef('${e.id}')">🗑</button>`:''}</td>`
+          :`<td class="nm2 ${stCls(e)}" onclick="${isAdmin()?`editInGroup('${e.id}')`:`editEleve('${e.id}')`}" title="Modifier / déplacer / retirer">${h(e.nom)} <span class="nmed">✏️</span></td>`}<td class="c">${F_PT.edit?`<input class="ein" type="number" min="3" max="20" style="width:52px" value="${ageOf(e)||''}" onchange="const x=elv('${e.id}'); if(!x.naissance){x.age=+this.value||'';} toast('Enregistré ✔')">`:(ageOf(e)||'')}</td>
           <td class="sel"><select onchange="setF('${e.id}','niveau',this.value||'À préciser')"><option value=""></option>${NIVEAUX.map(n=>`<option ${e.niveau===n?'selected':''}>${n}</option>`).join('')}</select></td>
           ${g.compet?`<td class="sel st-comp" style="padding:0 8px;font-weight:600">compétiteurs</td>`:`<td class="sel ${stCls(e)}"><select onchange="setStatutPres('${e.id}',this.value)"><option value=""></option>${STATUTS_PRES.map(n=>`<option ${e.ancien===n?'selected':''}>${n}</option>`).join('')}</select></td>`}
           ${cells}<td class="tot P">${P}</td><td class="tot A">${A}</td><td class="tot">${taux===null?'—':taux+'%'}</td></tr>`;
       });
       if(!el.length) rows += `<tr><td colspan="${nCols}" class="empty small">Aucun élève dans ce groupe.</td></tr>`;
       S.eleves.filter(e=>inG(e,g.id) && e.statut==='Abandon').forEach(e=>{
-        rows += `<tr class="quitrow"><td class="idx">–</td><td class="nm2 st-quit" style="white-space:nowrap"><s>${h(e.nom)}</s> ${F_PT.edit||isAdmin()?`<button class="mini" title="Réintégrer dans le groupe" onclick="reintegrer('${e.id}')">↩</button>${F_PT.edit?`<button class="mini r" title="Supprimer définitivement" onclick="delEleveDef('${e.id}')">🗑</button>`:''}`:''}</td>
+        rows += `<tr class="quitrow"><td class="idx">–</td><td class="nm2 st-quit" style="white-space:nowrap"><s>${h(e.nom)}</s> ${F_PT.edit||isAdmin()?`<button class="mini" title="Réintégrer dans le groupe" onclick="reintegrer('${e.id}')">↩</button>${F_PT.edit&&isAdmin()?`<button class="mini r" title="Supprimer définitivement" onclick="delEleveDef('${e.id}')">🗑</button>`:''}`:''}</td>
           <td class="c">${ageOf(e)||''}</td><td class="small">${h(e.niveau&&e.niveau!=='À préciser'?e.niveau:'')}</td><td class="small st-quit">a quitté le club${e.quitDate?' · '+fmtD(e.quitDate):''}</td>
           ${dates.map(d=>{ if(ferieOf(d)) return '<td class="fer"></td>'; const v=presOf(g.id,e.id,d); return `<td class="c small" style="color:#888">${v}</td>`; }).join('')}<td colspan="3"></td></tr>`;
       });
@@ -1853,7 +1853,7 @@ VIEWS.feuille = () => {
           return `<td class="c" data-d="${d}">${s&&(pr||ab)?`<b style="color:var(--green)">${pr}</b>/<b style="color:var(--bad)">${ab}</b>`:`<button class="allp" title="Tous présents" onclick="allP('${g.id}','${d}')">✔P</button>`}</td>`; }).join('')}
         <td class="tot P">${sum(el,e=>dates.filter(d=>['P','R'].includes(presOf(g.id,e.id,d))).length)}</td><td class="tot A">${sum(el,e=>dates.filter(d=>presOf(g.id,e.id,d)==='A').length)}</td><td></td></tr>`;
     });
-    html += `<div class="card" style="padding:0;margin-bottom:18px"><div class="dayhead" style="background:${DAYCOL[j]}">${j.toUpperCase()} <span>${dates.length} semaines · ${dates.filter(d=>!ferieOf(d)).length} séances prévues</span>${F_PT.edit?`<button class="gadd" style="margin-left:auto" onclick="editGroupe(null,'${j}')">+ Groupe le ${j.toLowerCase()}</button>`:''}</div>
+    html += `<div class="card" style="padding:0;margin-bottom:18px"><div class="dayhead" style="background:${DAYCOL[j]}">${j.toUpperCase()} <span>${dates.length} semaines · ${dates.filter(d=>!ferieOf(d)).length} séances prévues</span>${F_PT.edit&&isAdmin()?`<button class="gadd" style="margin-left:auto" onclick="editGroupe(null,'${j}')">+ Groupe le ${j.toLowerCase()}</button>`:''}</div>
     <div class="tw"><table class="ftable">
       <thead><tr><th rowspan="4">N°</th><th rowspan="4" style="text-align:left;min-width:170px">Nom et Prénom</th><th rowspan="4">Âge</th><th rowspan="4">Niveau</th><th rowspan="4">Statut</th>
         ${phs.map(x=>`<th colspan="${x.n}" class="ph ${/^T\d$/.test(x.l)?'phT':''}">${h(x.l)}</th>`).join('')}<th colspan="3" rowspan="2" class="mo">TOTAL ${t}</th></tr>
@@ -1867,7 +1867,7 @@ VIEWS.feuille = () => {
 };
 function rmExtra(id,gid){ const e=elv(id); e.extra=(e.extra||[]).filter(x=>x!==gid); render(); toast(e.nom+' retiré de ce groupe'); }
 function reintegrer(id){ const e=elv(id); e.statut='Actif'; e.ancien='Ancien'; delete e.quitDate; render(); toast(e.nom+' réintégré ✔'); }
-function delEleveDef(id){ const e=elv(id); if(!confirm(`Supprimer DÉFINITIVEMENT ${e.nom} ?\nSes paiements et présences seront effacés.\n(Pour garder l'historique, utilisez plutôt « a quitté le club ».)`)) return;
+function delEleveDef(id){ if(!isAdmin()) return toast('Réservé à l\'administrateur'); const e=elv(id); if(!confirm(`Supprimer DÉFINITIVEMENT ${e.nom} ?\nSes paiements et présences seront effacés.\n(Pour garder l'historique, utilisez plutôt « a quitté le club ».)`)) return;
   S.eleves=S.eleves.filter(x=>x.id!==id); S.tx=S.tx.filter(x=>x.eleve!==id); S.seances.forEach(s=>delete s.presences[id]);
   S.competitions.forEach(c=>c.equipes.forEach(q=>q.eleves=q.eleves.filter(x=>x!==id))); render(); toast('Élève supprimé'); }
 function addToGroup(gid){
@@ -2618,7 +2618,7 @@ function editGroupe(id, jour){
     {k:'formateur',label:'Formateur',type:'select',options:[['','— Aucun —'],...S.users.filter(u=>u.role==='formateur').map(u=>[u.id,u.nom])]},
   ], g, fd => { if(id){ Object.assign(g,fd); S.eleves.filter(e=>e.groupe===id).forEach(e=>e.jour=g.jour); } else S.groupes.push({id:uid('g'),...fd}); });
 }
-function toggleFerie(d){
+function toggleFerie(d){ if(!isAdmin()) return;
   const f=ferieOf(d);
   if(f){ if(f.debut===f.fin){ if(confirm(`Annuler « ${f.label} » (${fmtD(d)}) ? Ce jour redevient un jour de cours.`)){ S.feries.splice(S.feries.indexOf(f),1); render(); } }
          else alert(`Ce jour fait partie de « ${f.label} » (${fmtD(f.debut)} → ${fmtD(f.fin)}). Modifiez cette période dans Paramètres → Jours fériés & vacances.`); return; }
