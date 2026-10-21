@@ -1216,14 +1216,19 @@ VIEWS.caisse = () => {
   <div class="grid kpis">
     <div class="kpi g"><div class="l">Recettes</div><div class="v">${dt(sc.rin)}</div>${recDetail(recL)}</div>
     <div class="kpi" style="border-left-color:var(--bad)"><div class="l">Dépenses</div><div class="v">${dt(sc.rout)}</div></div>
-    ${compte==='academie'?(()=>{ const G={}; recL.forEach(r=>{ const k=r.grp||(r.auto?'Abonnements (mois)':'Autres'); G[k]=(G[k]||0)+(+r.montant||0); });
-      const ab=(G['Abonnements (mois)']||0)+(G["Frais d'inscription"]||0), cp=G['Compétiteurs']||0, autres=sc.rin-ab-cp, reste=ab-sc.rout;
-      return `<div class="kpi b"><div class="l">Abonnements + inscriptions − dépenses</div><div class="v" style="color:${reste<0?'var(--bad)':'var(--green)'}">${dt(reste)}</div>
-        <div style="margin-top:8px;font-size:13px;line-height:1.7"><div style="display:flex"><span>Abonnements + inscriptions</span><span style="flex:1"></span><b>${dt(ab)}</b></div><div style="display:flex;color:var(--bad)"><span>− Dépenses</span><span style="flex:1"></span><b>${dt(sc.rout)}</b></div>
-        <div style="display:flex;border-top:1px solid #cbd5e1;margin-top:4px;padding-top:4px"><span>🏆 Compétiteurs (à part)</span><span style="flex:1"></span><b>${dt(cp)}</b></div>${autres?`<div style="display:flex"><span>Autres recettes (à part)</span><span style="flex:1"></span><b>${dt(autres)}</b></div>`:''}</div></div>`; })()
+    ${compte==='academie'?(()=>{ const ab=sum(auto.filter(x=>x.col!=='comp'),x=>+x.montant||0)+sum(manIn,c=>+c.montant||0), cp=sum(auto.filter(x=>x.col==='comp'),x=>+x.montant||0), reste=ab-sc.rout;
+      const espIn=sum(auto.filter(x=>x.col!=='comp'&&(x.mode||'Espèces')==='Espèces'),x=>+x.montant||0)+sum(manIn.filter(c=>payMode(c)==='Espèces'),c=>+c.montant||0), espOut=sum(manOut.filter(c=>payMode(c)==='Espèces'),c=>+c.montant||0), esp=espIn-espOut;
+      const nonEsp=ab-espIn, depNonEsp=sc.rout-espOut, K=(TDEF().comptage||{})[F_C.tab], ecart=K?(+K.m||0)-esp:null;
+      const L=(l,v,st='')=>`<div style="display:flex;gap:6px;${st}"><span>${l}</span><span style="flex:1"></span><b style="white-space:nowrap">${v}</b></div>`;
+      return `<div class="kpi b"><div class="l">Solde caisse (sans compétiteurs)</div><div class="v" style="color:${reste<0?'var(--bad)':'var(--green)'}">${dt(reste)}</div>
+        <div style="margin-top:8px;font-size:13px;line-height:1.7">${L('Abonnements + inscriptions',dt(ab))}${L('− Dépenses',dt(sc.rout),'color:var(--bad)')}
+        ${L('🏆 Compétiteurs (à part, non compté)',dt(cp),'border-top:1px solid #cbd5e1;margin-top:4px;padding-top:4px;color:#64748b')}</div></div>
+      <div class="kpi p"><div class="l">💵 Argent liquide en caisse (espèces)</div><div class="v" style="color:${esp<0?'var(--bad)':'inherit'}">${dt(esp)}</div>
+        <div style="margin-top:8px;font-size:13px;line-height:1.7">${L('Reçu en espèces',dt(espIn))}${L('− Dépenses payées en espèces',dt(espOut),'color:var(--bad)')}
+        ${L('Chèques / virements reçus (pas dans la caisse)',dt(nonEsp),'color:#64748b')}${depNonEsp?L('Dépenses payées par chèque / virement',dt(depNonEsp),'color:#64748b'):''}
+        <div style="border-top:1px solid #cbd5e1;margin-top:6px;padding-top:6px">${K?L('Comptage réel du '+fmtD(K.d),dt(+K.m||0))+L('Écart',(ecart>0?'+':'')+dt(ecart),'color:'+(Math.abs(ecart)<1?'var(--green)':'var(--bad)')):''}
+        <button class="btn sm g" style="margin-top:4px" onclick="caisseCompte()">🧮 ${K?'Modifier le comptage':'Saisir l\'argent compté'}</button></div></div></div>`; })()
     :`<div class="kpi b"><div class="l">Solde ${compte==='projet'?'caisse Projet':compte==='masterclass'?'caisse Master class':compte==='competition'?'caisse Compétitions':'de la période'}</div><div class="v" style="color:${sc.solde<0?'var(--bad)':'var(--green)'}">${dt(sc.solde)}</div></div>`}
-    ${compte==='academie'?`<div class="kpi p"><div class="l">Solde total de la caisse</div><div class="v" style="color:${total.solde<0?'var(--bad)':'inherit'}">${dt(total.solde)}</div><div class="s">Tous trimestres (avec compétiteurs)</div>${(()=>{ const A=recettesAuto('academie',null); const ab=sum(A.filter(x=>['m1','m2','m3','insc'].includes(x.col)),x=>x.montant), cp=sum(A.filter(x=>x.col==='comp'),x=>x.montant);
-      return `<div style="margin-top:8px;font-size:13px;line-height:1.7"><div style="display:flex"><span>Abon. + inscri. − dépenses</span><span style="flex:1"></span><b style="white-space:nowrap;color:${ab-total.rout<0?'var(--bad)':'var(--green)'}">${dt(ab-total.rout)}</b></div><div style="display:flex"><span>🏆 Compétiteurs</span><span style="flex:1"></span><b>${dt(cp)}</b></div></div>`; })()}</div>`:''}
   </div>
 
   <div class="grid two" style="align-items:start">
@@ -1233,14 +1238,18 @@ VIEWS.caisse = () => {
     <div><div class="card tw" style="padding:0"><table class="ledger"><tr><th colspan="5" style="background:var(--bad)">DÉPENSES <span style="float:right;font-weight:400">${depL.length} ligne(s)</span></th></tr><tr><th>Date</th><th>Libellés</th><th class="num">Montant</th><th>RQ</th><th></th></tr>
       ${depL.map(row).join('')||'<tr><td colspan="5" class="empty">Aucune dépense.</td></tr>'}
       <tr class="tot"><td></td><td>TT</td><td class="num">${dt(sc.rout)}</td><td colspan="2"></td></tr>
-      ${compte==='academie'?(()=>{ const ab=sum(recL.filter(r=>r.grp==='Abonnements (mois)'||r.grp==="Frais d'inscription"),r=>+r.montant||0); return `<tr class="tot"><td></td><td>Abonnements + inscriptions − dépenses</td><td class="num" style="color:${ab-sc.rout<0?'var(--bad)':'var(--green)'}">${dt(ab-sc.rout)}</td><td colspan="2"></td></tr>`; })():''}
-      <tr class="tot"><td></td><td>Solde caisse ${compte==='academie'?'(avec compétiteurs)':''}</td><td class="num" style="color:${sc.solde<0?'var(--bad)':'var(--green)'}">${dt(sc.solde)}</td><td colspan="2"></td></tr></table></div>
+      ${compte==='academie'?(()=>{ const ab=sum(auto.filter(x=>x.col!=='comp'),x=>+x.montant||0)+sum(manIn,c=>+c.montant||0); return `<tr class="tot"><td></td><td>Solde caisse (sans compétiteurs)</td><td class="num" style="color:${ab-sc.rout<0?'var(--bad)':'var(--green)'}">${dt(ab-sc.rout)}</td><td colspan="2"></td></tr>`; })()
+      :`<tr class="tot"><td></td><td>Solde caisse</td><td class="num" style="color:${sc.solde<0?'var(--bad)':'var(--green)'}">${dt(sc.solde)}</td><td colspan="2"></td></tr>`}</table></div>
       <div class="card"><h3>Dépenses par catégorie</h3>${Object.entries(byCat).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div style="margin-bottom:10px"><div class="small" style="display:flex"><span>${h(k)}</span><span style="flex:1"></span><b>${dt(v)}</b></div><div class="bar"><i style="width:${v/maxC*100}%;background:var(--orange)"></i></div></div>`).join('')||'<div class="empty">—</div>'}</div></div>
   </div>`;
 };
 
 const recCat = x => x.col==='insc'?"Frais d'inscription":x.col==='comp'?'Compétiteurs':x.col==='projet'?'Projet 1+2':x.col==='compet'?'Frais compétition':x.col==='mc'?'Master class':'Abonnements (mois)';
 
+
+const payMode = c => c.mode || (/ch[eè]q/i.test(c.rq||'')?'Chèque':/vir/i.test(c.rq||'')?'Virement':'Espèces');
+function caisseCompte(){ const T=TDEF(); T.comptage=T.comptage||{}; const K=T.comptage[F_C.tab]||{d:TODAY,m:''};
+  formModal('🧮 Argent compté dans la caisse', [{k:'m',label:'Montant compté (DT)',type:'number',req:1},{k:'d',label:'Date du comptage',type:'date',req:1}], K, fd=>{ T.comptage[F_C.tab]={m:+fd.m||0, d:fd.d}; }); }
 function recDetail(L){ const G={}; L.forEach(r=>{ const k=r.grp||(r.auto?'Abonnements (mois)':'Autres recettes'); G[k]=(G[k]||0)+(+r.montant||0); });
   const ORD=['Abonnements (mois)',"Frais d'inscription",'Compétiteurs','Projet 1+2','Frais compétition','Master class','Autres recettes'];
   const keys=Object.keys(G).sort((a,b)=>{ const i=ORD.indexOf(a), j=ORD.indexOf(b); return (i<0?99:i)-(j<0?99:j); });
@@ -1258,8 +1267,8 @@ function mvt(sens, id){
   const c = c0 || {sens, compte, date:TODAY};
   formModal((id?'Modifier – ':'')+(sens==='in'?'Recette':'Dépense'), [
     {k:'date',label:'Date',type:'date',req:1},{k:'cat',label:'Catégorie',type:'select',options:sens==='in'?CAT_IN:compte==='competition'?CAT_COMP:CAT_OUT},
-    {k:'libelle',label:'Libellé',full:1,req:1},{k:'montant',label:'Montant (DT)',type:'number',req:1},{k:'rq',label:'RQ (remarque)'},
-  ], c, fd => { fd.montant=+fd.montant; if(!(fd.montant>0)){toast('Montant invalide');return false;} if(id) Object.assign(c,fd); else S.caisse.push({id:uid('c'), sens, compte, ...fd}); });
+    {k:'libelle',label:'Libellé',full:1,req:1},{k:'montant',label:'Montant (DT)',type:'number',req:1},{k:'mode',label:'Payé en',type:'select',options:MODES},{k:'rq',label:'RQ (remarque)'},
+  ], {...c, mode:c.mode||payMode(c)}, fd => { fd.montant=+fd.montant; if(!(fd.montant>0)){toast('Montant invalide');return false;} if(id) Object.assign(c,fd); else S.caisse.push({id:uid('c'), sens, compte, ...fd}); });
 }
 
 /* ---------------- CHARGES FIXES (mensuelles / trimestrielles) – rangées dans S.tarifs (réservé admin) ---------------- */
