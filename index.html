@@ -154,6 +154,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
 .ftable td.pc.P{background:var(--green-l);color:var(--green)}.ftable td.pc.A{background:var(--bad-l);color:var(--bad)}.ftable td.pc.R{background:var(--orange-l);color:#b56b00}
 .ftable td.pc.today{box-shadow:inset 0 0 0 2px var(--orange)}
 .ftable td.fer{background:#cfd5dc}
+.ftable td.pc.ferc{background:#e3e7ec}
 .ftable td.tot{text-align:center;font-weight:700;background:#f1f5f9}
 .ftable td.tot.P{color:var(--green)}.ftable td.tot.A{color:var(--bad)}.ftable td.tot.R{color:#b56b00}
 .ftable td.sel{padding:0;min-width:145px}
@@ -1419,7 +1420,7 @@ VIEWS.achats = () => {
     ${L.map(a=>{ const p=achCaisse(a), f=FOURS().find(x=>x.nom===a.four)||{}, it=a.items||[];
       return `<tr><td style="white-space:nowrap">${fmtD(a.date)}</td><td>${h((a.doc||'Facture').split(' ')[0])}${a.num?' <b>n° '+h(a.num)+'</b>':''}</td><td><b>${h(a.four||'')}</b></td>
       <td class="small">${f.tel?`📞 <a href="tel:${h(f.tel)}">${h(f.tel)}</a>`:''}${f.adr?`<div>📍 ${h(f.adr)}</div>`:''}${!f.tel&&!f.adr?'<span class="muted">—</span>':''}</td>
-      <td>${a.usage?`<span class="badge" style="background:${(usageCol[a.usage]||'#555')}1a;color:${usageCol[a.usage]||'#555'}">${h(a.usage)}</span>`:'<span class="muted">—</span>'}</td>
+      <td>${a.usage?`<span class="badge" style="background:${(usageCol[a.usage]||'#555')}1a;color:${usageCol[a.usage]||'#555'}">${h(a.usage)}</span>${a.comp?`<div class="small muted">${h(a.comp)}</div>`:''}`:'<span class="muted">—</span>'}</td>
       <td class="small">${it.length?it.map(i=>`${i.q} × ${h(stk(i.sid)?.nom||i.nom||'?')}`).join('<br>'):'<span class="muted">—</span>'}</td>
       <td class="num"><b>${dt(+a.montant||0)}</b></td>
       <td style="white-space:nowrap">${p?`<span style="color:#156b3a;font-weight:700">✔ Payé</span><div class="small muted">${fmtD(p.date)}</div>`:`<span style="color:#b42318;font-weight:700">✖ Non payé</span>`}</td>
@@ -1432,7 +1433,7 @@ const encQ = n => encodeURIComponent(n).replace(/'/g,'%27');
 const USAGES = ['Projet','Compétition','Formation','Autre'];
 function achEdit(id){
   const a = id ? ACH().find(x=>x.id===id) : null, p=a?achCaisse(a):null;
-  AE = a ? {...a, items:(a.items||[]).map(i=>({...i})), paye:p?'1':'0', pdate:p?p.date:TODAY, mode:p?(p.rq||'Espèces'):'Espèces'} : {date:TODAY, four:'', doc:'Facture', num:'', montant:'', note:'', usage:'Projet', items:[], paye:'0', pdate:TODAY, mode:'Espèces'};
+  AE = a ? {...a, comp:a.comp||'', items:(a.items||[]).map(i=>({...i})), paye:p?'1':'0', pdate:p?p.date:TODAY, mode:p?(p.rq||'Espèces'):'Espèces'} : {date:TODAY, four:'', doc:'Facture', num:'', montant:'', note:'', usage:'Projet', items:[], paye:'0', pdate:TODAY, mode:'Espèces'};
   const f=FOURS().find(x=>x.nom===AE.four)||{}; AE.tel=f.tel||''; AE.adr=f.adr||''; AE._t0=sum(AE.items,i=>(+i.q||0)*(+i.prix||0));
   achModal();
 }
@@ -1446,7 +1447,8 @@ function achModal(){
     <label>Date<input type="date" value="${AE.date}" onchange="AE.date=this.value"></label>
     <label>Facture ou BL ?<select onchange="AE.doc=this.value">${['Facture','BL','Ticket','Autre'].map(x=>`<option ${String(AE.doc||'').split(' ')[0]===x?'selected':''}>${x}</option>`).join('')}</select></label>
     <label>Numéro<input value="${h(AE.num||'')}" oninput="AE.num=this.value"></label>
-    <label>Utilisé pour<select onchange="AE.usage=this.value">${USAGES.map(x=>`<option ${AE.usage===x?'selected':''}>${x}</option>`).join('')}</select></label>
+    <label>Utilisé pour<select onchange="AE.usage=this.value;achModal()">${USAGES.map(x=>`<option ${AE.usage===x?'selected':''}>${x}</option>`).join('')}</select></label>
+    ${AE.usage==='Compétition'?`<label>Quelle compétition ?<input list="dl-comp" value="${h(AE.comp||'')}" oninput="AE.comp=this.value" placeholder="ex : RoboCup ENSI, Eurobot…"><datalist id="dl-comp">${[...new Set([...S.competitions.map(c=>c.nom),...S.stock.filter(x=>x.type==='competition').map(x=>x.comp)].filter(Boolean))].map(n=>`<option value="${h(n)}">`).join('')}</datalist></label>`:''}
     <div class="sec">2. Fournisseur</div>
     <label>Nom du fournisseur<input list="dl-four" value="${h(AE.four)}" oninput="achFour(this.value)" placeholder="choisir ou taper"><datalist id="dl-four">${four.map(x=>`<option value="${h(x)}">`).join('')}</datalist></label>
     <label>Téléphone<input id="ae-tel" value="${h(AE.tel||'')}" oninput="AE.tel=this.value"></label>
@@ -1473,7 +1475,7 @@ function achSave(){
   const tot=sum(AE.items,i=>(+i.q||0)*(+i.prix||0)); const montant=(+AE.montant && !(AE._t0 && Math.abs(+AE.montant-AE._t0)<1e-6))?+AE.montant:(tot||+AE.montant); if(!(montant>0)) return toast('Tapez le montant');
   if(AE.items.some(i=>!i.sid&&!String(i.nom||'').trim())) return toast('Choisissez ou tapez le nom de chaque article');
   const fn=AE.four.trim(); let f=FOURS().find(x=>x.nom===fn); if(!f){ f={nom:fn}; FOURS().push(f); } if(AE.tel!==undefined) f.tel=String(AE.tel||'').trim(); if(AE.adr!==undefined) f.adr=String(AE.adr||'').trim();
-  const data={date:AE.date, four:fn, doc:AE.doc, num:String(AE.num||'').trim(), montant, usage:AE.usage||'', note:AE.note||'', items:AE.items.filter(i=>(+i.q||0)>0).map(i=>({sid:i.sid||'', nom:i.nom||'', q:+i.q||0, prix:+i.prix||0}))};
+  const data={date:AE.date, four:fn, doc:AE.doc, num:String(AE.num||'').trim(), montant, usage:AE.usage||'', comp:AE.usage==='Compétition'?String(AE.comp||'').trim():'', note:AE.note||'', items:AE.items.filter(i=>(+i.q||0)>0).map(i=>({sid:i.sid||'', nom:i.nom||'', q:+i.q||0, prix:+i.prix||0}))};
   let a; if(AE.id){ a=ACH().find(x=>x.id===AE.id); achUnstock(a); Object.assign(a,data); } else { a={id:uid('a'), ...data, stocked:0}; ACH().push(a); }
   if(a.items.length) achToStock(a);   // toujours ajouté automatiquement au stock
   let c=achCaisse(a);
@@ -1486,7 +1488,8 @@ function achPayNow(a, date, mode){ S.caisse.push({id:uid('c'), sens:'out', compt
 function achToStock(a){
   a.items.forEach(i=>{ let s=i.sid?stk(i.sid):null;
     if(!s){ s={id:uid('st'), nom:i.nom.trim(), cat:catOf(i.nom), prix:i.prix||0, type:'projet', qte:0, panne:0, seuil:0, init:0, sortie:0, catOk:1}; s.ref=genRef(s.nom); S.stock.push(s); i.sid=s.id; }
-    if(i.prix) s.prix=i.prix; stkMove(s,'in',i.q,a.date,`Achat ${a.four}${a.num?' N° '+a.num:''}${a.usage?' · '+a.usage:''}`,a.id,a.four); });
+    if(!(s.mv||[]).some(m=>m.ach!==a.id)){ if(a.usage==='Compétition'){ s.type='competition'; s.comp=a.comp||s.comp||''; } else if(s.type==='competition') s.type='projet'; }   // article créé par cet achat : rangé selon l'utilisation
+    if(i.prix) s.prix=i.prix; stkMove(s,'in',i.q,a.date,`Achat ${a.four}${a.num?' N° '+a.num:''}${a.usage?' · '+a.usage:''}${a.comp?' ('+a.comp+')':''}`,a.id,a.four); });
   a.stocked=1;
 }
 function achDel(id){ const a=ACH().find(x=>x.id===id); if(!confirm('Supprimer cet achat ?'+(achCaisse(a)?' (le paiement sera retiré de la caisse)':'')+(a.stocked?' (les quantités ajoutées au stock seront retirées)':''))) return;
@@ -1828,10 +1831,10 @@ VIEWS.feuille = () => {
         ${dates.map(d=>ferieOf(d)?`<td class="fer"></td>`:'<td></td>').join('')}<td colspan="3"></td></tr>`;
       el.forEach((e,i)=>{
         let P=0,A=0,Rr=0;
-        const cells = dates.map(d=>{ if(ferieOf(d)) return `<td class="fer"></td>`; const v=presOf(g.id,e.id,d); if(v==='P')P++; else if(v==='A')A++; else if(v==='R')Rr++;
+        const cells = dates.map(d=>{ const fer=ferieOf(d); const v=presOf(g.id,e.id,d); if(v==='P')P++; else if(v==='A')A++; else if(v==='R')Rr++;
           const lp=leconPrevue(e.niveau,g.jour,d);
           const lt = lp ? 'S'+lp.n+' · '+h(lp.t) : (e.niveau&&e.niveau!=='À préciser' ? '—' : 'niveau ?');
-          return `<td class="pc ${v} ${d===TODAY?'today':''}" data-d="${d}" title="${lp?h('S'+lp.n+' · '+lp.t):lt}"><select onchange="setPres('${g.id}','${e.id}','${d}',this.value,this)"><option value=""></option><option ${v==='P'?'selected':''}>P</option><option ${v==='A'?'selected':''}>A</option>${v==='R'?'<option selected>R</option>':''}</select>${v==='P'||v==='R'?`<div class="lec-ok">${lt}</div>`:v==='A'?`<div class="lec-ko">✖ ${lt}</div>${ratTag(g.id,e.id,d)}`:''}</td>`; }).join('');
+          return `<td class="pc ${v} ${d===TODAY?'today':''} ${fer&&!v?'ferc':''}" data-d="${d}" title="${fer?h(fer.label)+' – vous pouvez quand même noter la présence':(lp?h('S'+lp.n+' · '+lp.t):lt)}"><select onchange="setPres('${g.id}','${e.id}','${d}',this.value,this)"><option value=""></option><option ${v==='P'?'selected':''}>P</option><option ${v==='A'?'selected':''}>A</option>${v==='R'?'<option selected>R</option>':''}</select>${v==='P'||v==='R'?`<div class="lec-ok">${lt}</div>`:v==='A'?`<div class="lec-ko">✖ ${lt}</div>${ratTag(g.id,e.id,d)}`:''}</td>`; }).join('');
         P+=Rr; const n=P+A, taux=n?Math.round(P/n*100):null;
         rows += `<tr data-g="${g.id}"><td class="idx">${i+1}</td>${F_PT.edit?`<td class="nm2 ${stCls(e)}" style="white-space:nowrap"><input class="ein" style="width:150px;font-weight:600" value="${h(e.nom)}" onchange="elv('${e.id}').nom=this.value.trim();toast('Enregistré ✔')"> <button class="mini" title="Déplacer / modifier" onclick="editInGroup('${e.id}')">🔀</button>${e.groupe!==g.id?`<button class="mini" title="Retirer de ce groupe (reste dans son groupe principal)" onclick="rmExtra('${e.id}','${g.id}')">✖</button>`:`<button class="mini" title="A quitté le club" onclick="setStatutPres('${e.id}',QUIT)">🚪</button>`}<button class="mini r" title="Supprimer définitivement" onclick="delEleveDef('${e.id}')">🗑</button></td>`
           :`<td class="nm2 ${stCls(e)}" onclick="${isAdmin()?`editInGroup('${e.id}')`:`fichePres('${e.id}')`}" title="Modifier / déplacer / retirer">${h(e.nom)} <span class="nmed">✏️</span></td>`}<td class="c">${F_PT.edit?`<input class="ein" type="number" min="3" max="20" style="width:52px" value="${ageOf(e)||''}" onchange="const x=elv('${e.id}'); if(!x.naissance){x.age=+this.value||'';} toast('Enregistré ✔')">`:(ageOf(e)||'')}</td>
@@ -1846,7 +1849,7 @@ VIEWS.feuille = () => {
           ${dates.map(d=>{ if(ferieOf(d)) return '<td class="fer"></td>'; const v=presOf(g.id,e.id,d); return `<td class="c small" style="color:#888">${v}</td>`; }).join('')}<td colspan="3"></td></tr>`;
       });
       // total présents par date
-      if(el.length) rows += `<tr class="sumr" data-g="${g.id}"><td></td><td>Présents / Absents</td><td colspan="3" class="small muted">${el.length} élève(s)</td>${dates.map(d=>{ if(ferieOf(d)) return '<td class="fer"></td>'; const s=seanceOf(g.id,d); const pr=s?el.filter(e=>['P','R'].includes(s.presences[e.id])).length:0, ab=s?el.filter(e=>s.presences[e.id]==='A').length:0;
+      if(el.length) rows += `<tr class="sumr" data-g="${g.id}"><td></td><td>Présents / Absents</td><td colspan="3" class="small muted">${el.length} élève(s)</td>${dates.map(d=>{ const s=seanceOf(g.id,d); const pr=s?el.filter(e=>['P','R'].includes(s.presences[e.id])).length:0, ab=s?el.filter(e=>s.presences[e.id]==='A').length:0;
           return `<td class="c" data-d="${d}">${s&&(pr||ab)?`<b style="color:var(--green)">${pr}</b>/<b style="color:var(--bad)">${ab}</b>`:`<button class="allp" title="Tous présents" onclick="allP('${g.id}','${d}')">✔P</button>`}</td>`; }).join('')}
         <td class="tot P">${sum(el,e=>dates.filter(d=>['P','R'].includes(presOf(g.id,e.id,d))).length)}</td><td class="tot A">${sum(el,e=>dates.filter(d=>presOf(g.id,e.id,d)==='A').length)}</td><td></td></tr>`;
     });
