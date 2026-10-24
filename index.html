@@ -141,6 +141,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
 .ftable th.today{background:var(--orange)}
 .ftable td{border:1px solid var(--line);padding:4px 6px;white-space:nowrap}
 .ftable td.c{text-align:center}
+.ftable tr.frow td{background:#eef4ff}.ftable td.fsel{padding:1px 2px}.ftable td.fsel select{font-size:11px;padding:1px 2px;max-width:76px;border:1px solid #c7d2e3;border-radius:4px;background:#fff;color:#1d4ed8;font-weight:700}
 .ftable td.nm2{font-weight:600;cursor:pointer}.ftable td.nm2:hover{color:var(--blue)}
 .ftable tr.grp td{background:#ef7f2d;color:#fff;font-weight:700;border-color:#ef7f2d}
 .ftable tr.grp td.lec{background:#f6a96e;text-align:center;cursor:pointer;font-weight:400}
@@ -444,6 +445,11 @@ const grp = id => S.groupes.find(g=>g.id===id) || {jour:'', horaire:'—'};
 const gLabel = g => g.horaire==='à définir' ? 'Horaire à définir' : `${g.code?g.code+' : ':''}${g.horaire.replace('-',' ==> ')}`;
 const gName = g => g ? `${g.jour} · ${gLabel(g)}`+(g.niveau?` · ${g.niveau}`:'') : '—';
 const usr = id => S.users.find(u=>u.id===id) || {nom:'—'};
+const FORMS = () => S.users.filter(u=>u.role==='formateur');
+/** formateur qui a fait la séance : choisi, sinon celui qui a pointé (si formateur), sinon le formateur du groupe */
+function seForm(s,g){ if(!s) return ''; if(s.form) return s.form; const u=S.users.find(x=>x.id===s.par); if(u&&u.role==='formateur') return u.id; return (g||grp(s.groupe)).formateur||''; }
+function setSeForm(gid,d,v){ let s=S.seances.find(x=>x.groupe===gid&&x.date===d); if(!s){ if(!v) return; s={id:uid('s'), groupe:gid, date:d, lecon:'', notes:'', presences:{}, par:S.session.id}; S.seances.push(s); }
+  s.form=v; if(!v && !Object.keys(s.presences).length && !s.lecon) S.seances=S.seances.filter(x=>x!==s); _C.si=null; P._k=''; render(); toast(v?'Formateur : '+usr(v).nom+' ✔':'Formateur retiré'); }
 const elv = id => S.eleves.find(e=>e.id===id);
 const cellSum = (eid,t,col) => sum(S.tx.filter(x=>x.eleve===eid && x.trim===t && x.col===col), x=>x.montant);
 const isCompetiteur = e => e.ancien==='compétiteurs' || (e.extra||[]).some(id=>grp(id).compet);
@@ -1308,19 +1314,24 @@ const CHG_DEF = [
   ['Femme de ménage','Autre dépense',50,'M'],['Salaire Tarek','Salaire formateur',1100,'M'],['Salaire Hanan','Salaire formateur',1000,'M'],
   ['Salaire Ikhlas','Salaire formateur',600,'M'],['Topnet (Internet)','Factures (STEG, SONEDE, Internet)',40,'M'],
   ['Comptable','Autre dépense',550,'T'],['CNSS (selon déclaration, 1000 à 1200)','Autre dépense',1100,'T',1]];
-function CHG(){ const T=TDEF(); if(!Array.isArray(T.charges)) T.charges=CHG_DEF.map(([lib,cat,montant,freq,variable],i)=>({id:'ch'+(i+1), lib, cat, montant, freq, jour:15, mois:freq==='T'?'1,4,7,10':'', variable:variable?1:0, actif:1})); return T.charges; }
+function CHG(){ const T=TDEF(); if(!Array.isArray(T.charges)) T.charges=CHG_DEF.map(([lib,cat,montant,freq,variable],i)=>({id:'ch'+(i+1), lib, cat, montant, freq, jour:15, mois:freq==='T'?'1,4,7,10':'', variable:variable?1:0, actif:1}));
+  T.charges.forEach(c=>{ if(c.decal===undefined && c.cat==='Salaire formateur'){ c.decal=1; if(!c.jour||+c.jour===15) c.jour=4; } }); // salaire du mois M payé le 3–4 du mois M+1
+  return T.charges; }
 let F_CH = {mois:''};
 const chMoisList = () => { const a=[]; for(let i=0;i<12;i++){ const m=(8+i)%12, y=AN_Y+(8+i>=12?1:0); a.push(y+'-'+String(m+1).padStart(2,'0')); } return a; };
 const chLabel = ym => MOIS_L[+ym.slice(5,7)-1]+' '+ym.slice(0,4);
 const chDue = (c,ym) => c.actif!==0 && (c.freq!=='T' || String(c.mois||'').split(/[ ,;]+/).map(Number).includes(+ym.slice(5,7)));
-const chPaid = (c,ym) => S.caisse.find(x=>x.refCharge===c.id && x.chMois===ym);
+const chPrev = ym => { let y=+ym.slice(0,4), m=+ym.slice(5,7)-1; if(!m){ m=12; y--; } return y+'-'+String(m).padStart(2,'0'); };
+const chDe = ym => { const l=chLabel(ym).toLowerCase(); return (/^[aeiouyàâéèêîôû]/.test(l)?"d'":'de ')+l; };
+const chSM = (c,ym) => c.decal ? chPrev(ym) : ym; // mois concerné (salaire : le mois d'avant)
+const chPaid = (c,ym) => S.caisse.find(x=>x.refCharge===c.id && x.chMois===chSM(c,ym));
 VIEWS.charges = () => {
   const L=chMoisList(); if(!F_CH.mois) F_CH.mois = L.includes(TODAY.slice(0,7)) ? TODAY.slice(0,7) : L[0];
   const ym=F_CH.mois, all=CHG(), due=all.filter(c=>chDue(c,ym));
   setHead('Charges du mois', 'Loyers, salaires, factures…');
   const prev=sum(due,c=>+c.montant||0), paye=sum(due,c=>chPaid(c,ym)?.montant||0), reste=due.filter(c=>!chPaid(c,ym));
   const row = c => { const p=chPaid(c,ym);
-    return `<tr style="${p?'background:#f3fbf6':''}"><td style="font-size:15px"><b>${h(c.lib)}</b>${c.freq==='T'?' <span class="small muted">(trimestre)</span>':''}<div class="small muted">à payer le ${fmtD(ym+'-'+String(c.jour||15).padStart(2,'0'))}</div>${c.variable?'<div class="small" style="color:#8a5a00">Montant à vérifier</div>':''}</td>
+    return `<tr style="${p?'background:#f3fbf6':''}"><td style="font-size:15px"><b>${h(c.lib)}</b>${c.freq==='T'?' <span class="small muted">(trimestre)</span>':''}${c.decal?`<div class="small" style="color:#1d4ed8;font-weight:700">Salaire ${chDe(chSM(c,ym))}</div>`:''}<div class="small muted">à payer le ${c.decal&&+c.jour===4?'3 ou 4 ':fmtD(ym+'-'+String(c.jour||15).padStart(2,'0'))}${c.decal&&+c.jour===4?chLabel(ym).toLowerCase():''}</div>${c.variable?'<div class="small" style="color:#8a5a00">Montant à vérifier</div>':''}</td>
       <td class="num" style="font-size:15px"><b>${dt(p?p.montant:+c.montant||0)}</b></td>
       <td>${p?`<span style="color:#156b3a;font-weight:700">✔ Payé le ${fmtD(p.date)}</span>`:`<span style="color:#b42318;font-weight:700">✖ Pas encore payé</span>`}</td>
       <td style="white-space:nowrap;text-align:right">${p?`<button class="btn sm" onclick="chPay('${c.id}')">✏️ Date / montant</button> <button class="btn sm r" onclick="chUnpay('${c.id}')">Annuler</button>`:`<button class="btn" onclick="chPay('${c.id}')">💵 Payer</button>`} <button class="btn sm g" onclick="chEdit('${c.id}')">✏️ Modifier</button></td></tr>`; };
@@ -1334,32 +1345,33 @@ VIEWS.charges = () => {
   </div>
   <div class="card tw" style="padding:0"><table><tr><th>Charge</th><th class="num">Montant</th><th>Payé ?</th><th></th></tr>
     ${due.map(row).join('')||'<tr><td colspan="4" class="empty">Aucune charge ce mois-ci.</td></tr>'}</table></div>
-  <div class="small muted">Les charges du trimestre (comptable, CNSS) apparaissent seulement en janvier, avril, juillet et octobre. Pour changer : ✏️ Modifier.</div>`;
+  <div class="small muted">Les salaires sont payés le mois suivant (ex : salaire d'octobre payé le 3 ou 4 novembre) : ils apparaissent donc dans le mois où on les paie. Les charges du trimestre (comptable, CNSS) apparaissent seulement en janvier, avril, juillet et octobre. Pour changer : ✏️ Modifier.</div>`;
 };
 function chEdit(id){
   const L=CHG(), c0=id?L.find(x=>x.id===id):null;
-  const v = c0 ? {...c0, actif:c0.actif===0?'0':'1', variable:c0.variable?'1':'0'} : {freq:'M', jour:15, cat:'Autre dépense', mois:'1,4,7,10', actif:'1', variable:'0'};
+  const v = c0 ? {...c0, actif:c0.actif===0?'0':'1', variable:c0.variable?'1':'0', decal:c0.decal?'1':'0'} : {freq:'M', jour:15, cat:'Autre dépense', mois:'1,4,7,10', actif:'1', variable:'0', decal:'0'};
   formModal(c0?'Modifier la charge':'Nouvelle charge', [
     {k:'lib',label:'Libellé',full:1,req:1},{k:'montant',label:'Montant (DT)',type:'number',req:1},
     {k:'freq',label:'Quand ?',type:'select',options:[['M','Chaque mois'],['T','Chaque trimestre']]},
     {k:'jour',label:'Jour du mois pour payer (ex : 15)',type:'number'},
+    {k:'decal',label:'Payée quel mois ?',type:'select',options:[['0','Le même mois'],['1','Le mois suivant (ex : salaire d\'octobre payé début novembre)']]},
     {k:'mois',label:'Si trimestre : numéros des mois (1=janv., 4=avril, 7=juil., 10=oct.)'},
     {k:'cat',label:'Catégorie dans la caisse',type:'select',options:CAT_OUT},
     {k:'variable',label:'Le montant change ?',type:'select',options:[['0','Non, toujours le même'],['1','Oui, à vérifier à chaque fois']]},
     {k:'actif',label:'État',type:'select',options:[['1','Active'],['0','Arrêtée (ne plus demander)']]},{k:'note',label:'Remarque',full:1},
-  ], v, fd => { fd.montant=+fd.montant||0; fd.jour=Math.min(28,Math.max(1,+fd.jour||15)); fd.actif=+fd.actif; fd.variable=+fd.variable;
+  ], v, fd => { fd.montant=+fd.montant||0; fd.jour=Math.min(28,Math.max(1,+fd.jour||15)); fd.actif=+fd.actif; fd.variable=+fd.variable; fd.decal=+fd.decal;
     if(c0) Object.assign(c0,fd); else L.push({id:uid('ch'),...fd}); },
   c0?`<button type="button" class="btn r" style="margin-right:auto" onclick="if(confirm('Supprimer cette charge ? (les paiements déjà faits restent dans la caisse)')){TDEF().charges=CHG().filter(x=>x.id!=='${c0.id}');closeModal();render();}">Supprimer</button>`:'');
 }
 function chPay(id){
-  const c=CHG().find(x=>x.id===id), ym=F_CH.mois, p=chPaid(c,ym);
+  const c=CHG().find(x=>x.id===id), ym=F_CH.mois, p=chPaid(c,ym), sm=chSM(c,ym);
   const v = p ? {date:p.date, montant:p.montant, rq:p.rq||''} : {date:TODAY.slice(0,7)===ym?TODAY:ym+'-'+String(c.jour||15).padStart(2,'0'), montant:c.montant, rq:''};
-  formModal(`${p?'Modifier le paiement':'Payer'} – ${c.lib} (${chLabel(ym).toLowerCase()})`, [
+  formModal(`${p?'Modifier le paiement':'Payer'} – ${c.lib} (${c.decal?'salaire '+chDe(sm):chLabel(sm).toLowerCase()})`, [
     {k:'date',label:'Date du paiement',type:'date',req:1},{k:'montant',label:'Montant payé (DT)',type:'number',req:1},
     {k:'rq',label:'Comment ? (espèces, chèque n°…)',full:1}], v,
   fd => { fd.montant=+fd.montant; if(!(fd.montant>0)){toast('Montant invalide');return false;}
-    const lib=`${c.lib} – ${chLabel(ym).toLowerCase()}`;
-    if(p) Object.assign(p,fd,{libelle:lib}); else S.caisse.push({id:uid('c'), sens:'out', compte:'academie', cat:c.cat||'Autre dépense', libelle:lib, refCharge:c.id, chMois:ym, ...fd}); });
+    const lib=`${c.lib} – ${chLabel(sm).toLowerCase()}`;
+    if(p) Object.assign(p,fd,{libelle:lib}); else S.caisse.push({id:uid('c'), sens:'out', compte:'academie', cat:c.cat||'Autre dépense', libelle:lib, refCharge:c.id, chMois:sm, ...fd}); });
 }
 function chUnpay(id){ const c=CHG().find(x=>x.id===id), p=chPaid(c,F_CH.mois); if(!p||!confirm('Annuler ce paiement ? (il sera retiré de la caisse)')) return; S.caisse=S.caisse.filter(x=>x!==p); render(); toast('Paiement annulé'); }
 
@@ -1688,7 +1700,7 @@ function parcours(e){
   return L.map((s,k)=>{ const d=dates[k]; const se=d?S.seances.find(x=>x.groupe===e.groupe&&x.date===d):null; const v=se?se.presences[e.id]:'';
     const r = v==='A' ? ratOf(e.groupe,e.id,d) : null;
     const st = v==='P'||v==='R' ? 'fait' : v==='A' ? (r&&r.fait?'rattrapee':r?'prevu':'rattraper') : (d && d<TODAY ? 'nonpointe' : 'avenir');
-    return {n:k+1, ...s, date:d, st, rat:r}; });
+    return {n:k+1, ...s, date:d, st, rat:r, form:se?seForm(se,g):''}; });
 }
 function parcoursHtml(e){
   const L=parcours(e);
@@ -1698,8 +1710,8 @@ function parcoursHtml(e){
   const lab={fait:badge('✔ Suivie','b-ok'), rattraper:badge('✖ À rattraper','b-bad'), prevu:badge('📅 Rattrapage prévu','b-info'), rattrapee:badge('↺ Rattrapée','b-ok'), nonpointe:badge('Non pointée','b-warn'), avenir:'<span class="muted small">À venir</span>'};
   return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><b>${h(e.niveau)}</b><div class="bar" style="flex:1;height:10px"><i style="width:${fait/L.length*100}%;background:var(--green)"></i></div><b>${fait} / ${L.length} séances</b></div>
     ${ratt.length?`<div class="alert bad small">À rattraper : ${ratt.map(x=>'S'+x.n+' '+h(x.t)).join(' · ')}</div>`:''}
-    <div class="tw" style="max-height:340px;overflow:auto"><table class="small"><tr><th>N°</th><th>Date</th><th>Séance</th><th>Statut</th></tr>
-    ${L.map(x=>`<tr><td><b>S${x.n}</b></td><td>${x.date?fmtD(x.date):'—'}</td><td><span class="badge" style="background:${TYPECOL[x.type]}1a;color:${TYPECOL[x.type]}">${x.type}</span> ${h(x.t)}${x.sup?` <span class="muted">(${h(x.sup)})</span>`:''}</td><td>${lab[x.st]}</td></tr>`).join('')}</table></div>`;
+    <div class="tw" style="max-height:340px;overflow:auto"><table class="small"><tr><th>N°</th><th>Date</th><th>Séance</th><th>Statut</th><th>Formateur</th></tr>
+    ${L.map(x=>`<tr><td><b>S${x.n}</b></td><td>${x.date?fmtD(x.date):'—'}</td><td><span class="badge" style="background:${TYPECOL[x.type]}1a;color:${TYPECOL[x.type]}">${x.type}</span> ${h(x.t)}${x.sup?` <span class="muted">(${h(x.sup)})</span>`:''}</td><td>${lab[x.st]}</td><td>${x.form?h(usr(x.form).nom):'<span class="muted">—</span>'}</td></tr>`).join('')}</table></div>`;
 }
 
 /* ---------------- PLANNING (programme par niveau) ---------------- */
@@ -1743,6 +1755,7 @@ const P = {groupe:'', date:TODAY, lecon:'', notes:'', pres:{}};
 function loadSeance(){
   const s = S.seances.find(x=>x.groupe===P.groupe && x.date===P.date);
   P.existing = s || null; P.lecon = s ? s.lecon : ''; P.notes = s ? s.notes : ''; P.pres = s ? {...s.presences} : {};
+  P.form = s ? seForm(s) : (S.session.role==='formateur' ? S.session.id : grp(P.groupe).formateur||'');
   S.eleves.filter(e=>e.groupe===P.groupe && (e.statut==='Actif'||e.statut===ESSAI)).forEach(e=>{ if(!P.pres[e.id]) P.pres[e.id]='P'; });
 }
 function leconsFor(g){
@@ -1770,6 +1783,8 @@ VIEWS.presences = () => {
       ${P.existing?badge('Séance enregistrée – modification','b-info'):badge('Nouvelle séance','b-warn')}
       ${jourOf(P.date)!==g.jour?badge('⚠ Ce groupe a cours le '+g.jour,'b-bad'):''}${ferieOf(P.date)?badge('🏖 '+ferieOf(P.date).label,'b-mut'):''}
     </div>
+    <label class="small muted" style="font-weight:600">👤 Formateur qui a fait la séance</label>
+    <div class="toolbar" style="margin-top:4px"><select style="flex:1;font-weight:700" onchange="P.form=this.value"><option value="">— Choisir le formateur —</option>${FORMS().map(u=>`<option value="${u.id}" ${u.id===P.form?'selected':''}>${h(u.nom)}</option>`).join('')}</select></div>
     <label class="small muted" style="font-weight:600">Contenu de la séance (leçon)</label>
     <div class="toolbar" style="margin-top:4px">
       <select id="lec" style="flex:1" onchange="P.lecon=this.value==='__autre'?'':this.value;document.getElementById('lecAutre').style.display=this.value==='__autre'?'block':'none'">
@@ -1785,14 +1800,15 @@ VIEWS.presences = () => {
   </div>
   <div class="card"><h3>Séances de ce groupe</h3>
     ${past.map(s=>{ const v=Object.values(s.presences), t=v.length?Math.round(v.filter(x=>x!=='A').length/v.length*100):0;
-      return `<div class="alert ${s.date===P.date?'warn':'info'} small" style="cursor:pointer" onclick="P.date='${s.date}';render()"><span><b>${fmtD(s.date)}</b><br>${h(s.lecon||'—')}</span><span class="sp"></span>${t} %</div>`;}).join('')||'<div class="empty">Aucune séance enregistrée.</div>'}
+      return `<div class="alert ${s.date===P.date?'warn':'info'} small" style="cursor:pointer" onclick="P.date='${s.date}';render()"><span><b>${fmtD(s.date)}</b> · 👤 ${h(usr(seForm(s)).nom)}<br>${h(s.lecon||'—')}</span><span class="sp"></span>${t} %</div>`;}).join('')||'<div class="empty">Aucune séance enregistrée.</div>'}
   </div></div>`;
 };
 function allPres(k){ Object.keys(P.pres).forEach(id=>P.pres[id]=k); render(); }
 function saveSeance(){
   if(!P.lecon) return toast('Choisissez la leçon de la séance');
-  if(P.existing) Object.assign(P.existing, {lecon:P.lecon, notes:P.notes, presences:{...P.pres}, modifiePar:S.session.id});
-  else S.seances.push({id:uid('s'), groupe:P.groupe, date:P.date, lecon:P.lecon, notes:P.notes, presences:{...P.pres}, par:S.session.id});
+  if(!P.form) return toast('Choisissez le formateur qui a fait la séance');
+  if(P.existing) Object.assign(P.existing, {lecon:P.lecon, notes:P.notes, presences:{...P.pres}, form:P.form, modifiePar:S.session.id});
+  else S.seances.push({id:uid('s'), groupe:P.groupe, date:P.date, lecon:P.lecon, notes:P.notes, presences:{...P.pres}, form:P.form, par:S.session.id});
   P._k=''; render(); toast('Pointage enregistré ✔');
 }
 function delSeance(){ if(!confirm('Supprimer cette séance ?')) return; S.seances=S.seances.filter(s=>s!==P.existing); P._k=''; render(); toast('Séance supprimée'); }
@@ -1830,12 +1846,15 @@ VIEWS.feuille = () => {
       const el = S.eleves.filter(e=>inG(e,g.id) && e.statut!=='Abandon');
       rows += `<tr class="grp"><td colspan="5">${h(gLabel(g))}${g.niveau?' · '+h(g.niveau):''} <button class="gadd" onclick="addToGroup('${g.id}')">+ Ajouter un élève</button>${F_PT.edit?` <button class="gadd" onclick="editGroupe('${g.id}')">✏️ Groupe</button> <button class="gadd" onclick="delGroupe('${g.id}')">🗑</button>`:''}</td>
         ${dates.map(d=>ferieOf(d)?`<td class="fer"></td>`:'<td></td>').join('')}<td colspan="3"></td></tr>`;
+      { const fc={}; dates.forEach(d=>{ const s=seanceOf(g.id,d); const f=seForm(s,g); if(s&&f) fc[f]=(fc[f]||0)+1; });
+        rows += `<tr class="frow"><td></td><td colspan="4" class="small"><b>👤 Formateur de la séance</b>${Object.keys(fc).length?' · '+Object.entries(fc).map(([f,n])=>`${h(usr(f).nom)} : <b>${n}</b>`).join(' · '):''}</td>
+        ${dates.map(d=>{ const s=seanceOf(g.id,d), f=seForm(s,g); return `<td class="c fsel ${ferieOf(d)&&!s?'fer':''}"><select title="Formateur qui a fait la séance" onchange="setSeForm('${g.id}','${d}',this.value)"><option value=""></option>${FORMS().map(u=>`<option value="${u.id}" ${u.id===f?'selected':''}>${h(u.nom)}</option>`).join('')}</select></td>`; }).join('')}<td colspan="3"></td></tr>`; }
       el.forEach((e,i)=>{
         let P=0,A=0,Rr=0;
         const cells = dates.map(d=>{ const fer=ferieOf(d); const v=presOf(g.id,e.id,d); if(v==='P')P++; else if(v==='A')A++; else if(v==='R')Rr++;
           const lp=leconPrevue(e.niveau,g.jour,d);
           const lt = lp ? 'S'+lp.n+' · '+h(lp.t) : (e.niveau&&e.niveau!=='À préciser' ? '—' : 'niveau ?');
-          return `<td class="pc ${v} ${d===TODAY?'today':''} ${fer&&!v?'ferc':''}" data-d="${d}" title="${fer?h(fer.label)+' – vous pouvez quand même noter la présence':(lp?h('S'+lp.n+' · '+lp.t):lt)}"><select onchange="setPres('${g.id}','${e.id}','${d}',this.value,this)"><option value=""></option><option ${v==='P'?'selected':''}>P</option><option ${v==='A'?'selected':''}>A</option>${v==='R'?'<option selected>R</option>':''}</select>${v==='P'||v==='R'?`<div class="lec-ok">${lt}</div>`:v==='A'?`<div class="lec-ko">✖ ${lt}</div>${ratTag(g.id,e.id,d)}`:''}</td>`; }).join('');
+          return `<td class="pc ${v} ${d===TODAY?'today':''} ${fer&&!v?'ferc':''}" data-d="${d}" title="${fer?h(fer.label)+' – vous pouvez quand même noter la présence':(lp?h('S'+lp.n+' · '+lp.t):lt)}${v&&seForm(seanceOf(g.id,d),g)?' – formateur : '+h(usr(seForm(seanceOf(g.id,d),g)).nom):''}"><select onchange="setPres('${g.id}','${e.id}','${d}',this.value,this)"><option value=""></option><option ${v==='P'?'selected':''}>P</option><option ${v==='A'?'selected':''}>A</option>${v==='R'?'<option selected>R</option>':''}</select>${v==='P'||v==='R'?`<div class="lec-ok">${lt}</div>`:v==='A'?`<div class="lec-ko">✖ ${lt}</div>${ratTag(g.id,e.id,d)}`:''}</td>`; }).join('');
         P+=Rr; const n=P+A, taux=n?Math.round(P/n*100):null;
         rows += `<tr data-g="${g.id}"><td class="idx">${i+1}</td>${F_PT.edit?`<td class="nm2 ${stCls(e)}" style="white-space:nowrap"><input class="ein" style="width:150px;font-weight:600" value="${h(e.nom)}" onchange="elv('${e.id}').nom=this.value.trim();toast('Enregistré ✔')"> <button class="mini" title="Déplacer / modifier" onclick="editInGroup('${e.id}')">🔀</button>${e.groupe!==g.id?`<button class="mini" title="Retirer de ce groupe (reste dans son groupe principal)" onclick="rmExtra('${e.id}','${g.id}')">✖</button>`:`<button class="mini" title="A quitté le club" onclick="setStatutPres('${e.id}',QUIT)">🚪</button>`}${isAdmin()?`<button class="mini r" title="Supprimer définitivement" onclick="delEleveDef('${e.id}')">🗑</button>`:''}</td>`
           :`<td class="nm2 ${stCls(e)}" onclick="${isAdmin()?`editInGroup('${e.id}')`:`editEleve('${e.id}')`}" title="Modifier / déplacer / retirer">${h(e.nom)} <span class="nmed">✏️</span></td>`}<td class="c">${F_PT.edit?`<input class="ein" type="number" min="3" max="20" style="width:52px" value="${ageOf(e)||''}" onchange="const x=elv('${e.id}'); if(!x.naissance){x.age=+this.value||'';} toast('Enregistré ✔')">`:(ageOf(e)||'')}</td>
