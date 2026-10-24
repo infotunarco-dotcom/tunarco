@@ -486,6 +486,7 @@ function presenceStats(e){
 
 if(!S.kits) S.kits=[];
 const stockBas = () => S.stock.filter(s => s.seuil>0 && s.qte - s.panne <= s.seuil);
+const canEdit = () => !!S.session;
 const isAdmin = () => S.session && S.session.role==='admin';
 const myGroups = () => { if(isAdmin()) return S.groupes; const mine=S.groupes.filter(g=>g.formateur===S.session.id); return (F_PT.mine && mine.length) ? mine : S.groupes; };
 const hStart = hr => { const m=String(hr).match(/(\d+)h(\d*)/); return m? (+m[1])*60+(+m[2]||0) : 9999; };
@@ -1712,15 +1713,15 @@ VIEWS.planning = () => {
   setHead('Planning des cours', 'Programme de chaque niveau, d\'octobre à fin juin');
   return `<div class="catbar" style="position:static">${NIVEAUX.map(n=>{ const c=(S.programme[n]||[]).length; return `<button class="catchip ${PL_N===n?'on':''}" onclick="PL_N='${n}';render()">${n} <span>${c||'—'}</span></button>`; }).join('')}</div>
   <div class="toolbar"><h3 style="margin:0">${h(PL_N)}</h3><span class="small muted">${L.length} séance(s) · ${(L.length*1.5).toString().replace('.',',')} h · ${nbEl} élève(s) à ce niveau</span>
-    <span class="sp"></span>${isAdmin()?`<button class="btn g" onclick="editProg()">+ Ajouter une séance</button>`:''}</div>
+    <span class="sp"></span>${canEdit()?`<button class="btn g" onclick="editProg()">+ Ajouter une séance</button>`:''}</div>
   <div class="legend" style="margin:0 0 10px">${Object.entries(TYPECOL).map(([k,c])=>`<span><i style="background:${c}"></i>${k==='ÉLEC'?'Cours électronique':k==='CAO'?'SolidWorks / 3D':k==='ATELIER'?'Atelier pratique':'Projet'}</span>`).join('')}<span>· Dates calculées pour un groupe du jeudi (chaque groupe suit le même ordre sur son propre jour, vacances et jours fériés exclus).</span></div>
   <div class="card tw" style="padding:0"><table>
-    <tr><th>N°</th><th>Semaine (réf. jeudi)</th><th>Type</th><th>Séance</th><th>Support</th>${isAdmin()?'<th></th>':''}</tr>
+    <tr><th>N°</th><th>Semaine (réf. jeudi)</th><th>Type</th><th>Séance</th><th>Support</th>${canEdit()?'<th></th>':''}</tr>
     ${L.map((s,i)=>`<tr ${ref[i]&&ref[i]<=TODAY&&(!ref[i+1]||ref[i+1]>TODAY)?'style="background:var(--orange-l)"':''}><td><b style="color:${TYPECOL[s.type]}">S${i+1}</b></td><td class="small" style="white-space:nowrap">${ref[i]?fmtD(ref[i]):'<span class="muted">après fin juin</span>'}</td>
       <td><span class="badge" style="background:${TYPECOL[s.type]}1a;color:${TYPECOL[s.type]}">${s.type}</span></td>
-      <td>${isAdmin()?`<input class="ein" style="width:100%;font-weight:700" value="${h(s.t)}" onchange="S.programme[PL_N][${i}].t=this.value;toast('Enregistré ✔')">`:`<b>${h(s.t)}</b>`}${s.d?`<div class="small muted">${h(s.d)}</div>`:''}</td>
-      <td class="small">${isAdmin()?`<input class="ein" style="width:90px" value="${h(s.sup)}" onchange="S.programme[PL_N][${i}].sup=this.value;toast('Enregistré ✔')">`:h(s.sup)}</td>
-      ${isAdmin()?`<td style="white-space:nowrap"><button class="btn sm g" onclick="mvProg(${i},-1)">↑</button> <button class="btn sm g" onclick="editProg(${i})">✏️</button> <button class="btn sm r" onclick="if(confirm('Supprimer cette séance ?')){S.programme['${PL_N}'].splice(${i},1);render()}">✕</button></td>`:''}</tr>`).join('')||`<tr><td colspan="6" class="empty">Pas encore de programme pour ce niveau.${isAdmin()?' Cliquez sur « + Ajouter une séance ».':''}</td></tr>`}
+      <td>${canEdit()?`<input class="ein" style="width:100%;font-weight:700" value="${h(s.t)}" onchange="S.programme[PL_N][${i}].t=this.value;toast('Enregistré ✔')">`:`<b>${h(s.t)}</b>`}${s.d?`<div class="small muted">${h(s.d)}</div>`:''}</td>
+      <td class="small">${canEdit()?`<input class="ein" style="width:90px" value="${h(s.sup)}" onchange="S.programme[PL_N][${i}].sup=this.value;toast('Enregistré ✔')">`:h(s.sup)}</td>
+      ${canEdit()?`<td style="white-space:nowrap"><button class="btn sm g" onclick="mvProg(${i},-1)">↑</button> <button class="btn sm g" onclick="editProg(${i})">✏️</button> <button class="btn sm r" onclick="if(confirm('Supprimer cette séance ?')){S.programme['${PL_N}'].splice(${i},1);render()}">✕</button></td>`:''}</tr>`).join('')||`<tr><td colspan="6" class="empty">Pas encore de programme pour ce niveau.${canEdit()?' Cliquez sur « + Ajouter une séance ».':''}</td></tr>`}
   </table></div>
   ${L.length>ref.length?`<div class="alert warn small">⚠ ${L.length-ref.length} séance(s) dépassent la fin de l'année (30/06) pour un groupe du jeudi.</div>`:''}`;
 };
@@ -1780,7 +1781,7 @@ VIEWS.presences = () => {
     ${el.map(e=>`<div class="pt-row"><span class="nm">${h(e.nom)}</span>
       <div class="seg">${['P','R','A'].map(k=>`<button class="${k} ${P.pres[e.id]===k?'on':''}" onclick="P.pres['${e.id}']='${k}';render()">${({P:'Présent',R:'Retard',A:'Absent'})[k]}</button>`).join('')}</div></div>`).join('') || '<div class="empty">Aucun élève actif dans ce groupe.</div>'}
     <textarea placeholder="Remarques sur la séance (optionnel)" style="width:100%;margin-top:12px" rows="2" oninput="P.notes=this.value">${h(P.notes)}</textarea>
-    <div class="mfoot">${P.existing && isAdmin()?`<button class="btn r" onclick="delSeance()">Supprimer la séance</button>`:''}<button class="btn o" onclick="saveSeance()">💾 Enregistrer le pointage</button></div>
+    <div class="mfoot">${P.existing && canEdit()?`<button class="btn r" onclick="delSeance()">Supprimer la séance</button>`:''}<button class="btn o" onclick="saveSeance()">💾 Enregistrer le pointage</button></div>
   </div>
   <div class="card"><h3>Séances de ce groupe</h3>
     ${past.map(s=>{ const v=Object.values(s.presences), t=v.length?Math.round(v.filter(x=>x!=='A').length/v.length*100):0;
@@ -1816,7 +1817,7 @@ VIEWS.feuille = () => {
     <span class="legend" style="margin:0"><span><i style="background:var(--green)"></i>P présent</span><span><i style="background:var(--bad)"></i>A absent</span><span><i style="background:#cfd5dc"></i>Vacances / férié</span><span><i style="background:#e5e7eb;border:1px dashed #999"></i>A quitté le club</span></span>
     <span class="sp"></span><button class="btn ${F_PT.edit?'gr':'o'}" onclick="F_PT.edit=!F_PT.edit;render()">${F_PT.edit?'✔ Terminer les modifications':'✏️ Modifier la feuille'}</button>
     <button class="btn g" onclick="$('#printZone').innerHTML=$('#view').innerHTML;window.print()">🖨️ Imprimer</button></div>
-    ${F_PT.edit?`<div class="alert warn small">✏️ <b>Mode modification</b> : renommez les élèves directement, changez l'âge · 🔀 déplacer / changer de groupe · 🚪 a quitté le club (reste en gris, ↩ pour réintégrer)${isAdmin()?' · 🗑 supprimer définitivement · ✏️ / 🗑 sur la bande orange pour le groupe · « + Groupe » à côté du jour · cliquez sur une date pour la marquer jour férié / vacances (ou l\'annuler)':''}.</div>`:''}`;
+    ${F_PT.edit?`<div class="alert warn small">✏️ <b>Mode modification</b> : renommez les élèves directement, changez l'âge · 🔀 déplacer / changer de groupe · 🚪 a quitté le club (reste en gris, ↩ pour réintégrer)${isAdmin()?' · 🗑 supprimer définitivement':''} · ✏️ / 🗑 sur la bande orange pour le groupe · « + Groupe » à côté du jour · cliquez sur une date pour la marquer jour férié / vacances (ou l\'annuler).</div>`:''}`;
   JOURS.filter(j=>gs.some(g=>g.jour===j)).forEach(j=>{
     const dates = datesFor(j,t);
     // en-têtes mois / dates / S1..S5 ou VACANCES / FÉRIÉ
@@ -1827,7 +1828,7 @@ VIEWS.feuille = () => {
     let rows = '';
     gs.filter(g=>g.jour===j).forEach(g=>{
       const el = S.eleves.filter(e=>inG(e,g.id) && e.statut!=='Abandon');
-      rows += `<tr class="grp"><td colspan="5">${h(gLabel(g))}${g.niveau?' · '+h(g.niveau):''} <button class="gadd" onclick="addToGroup('${g.id}')">+ Ajouter un élève</button>${F_PT.edit&&isAdmin()?` <button class="gadd" onclick="editGroupe('${g.id}')">✏️ Groupe</button> <button class="gadd" onclick="delGroupe('${g.id}')">🗑</button>`:''}</td>
+      rows += `<tr class="grp"><td colspan="5">${h(gLabel(g))}${g.niveau?' · '+h(g.niveau):''} <button class="gadd" onclick="addToGroup('${g.id}')">+ Ajouter un élève</button>${F_PT.edit?` <button class="gadd" onclick="editGroupe('${g.id}')">✏️ Groupe</button> <button class="gadd" onclick="delGroupe('${g.id}')">🗑</button>`:''}</td>
         ${dates.map(d=>ferieOf(d)?`<td class="fer"></td>`:'<td></td>').join('')}<td colspan="3"></td></tr>`;
       el.forEach((e,i)=>{
         let P=0,A=0,Rr=0;
@@ -1853,7 +1854,7 @@ VIEWS.feuille = () => {
           return `<td class="c" data-d="${d}">${s&&(pr||ab)?`<b style="color:var(--green)">${pr}</b>/<b style="color:var(--bad)">${ab}</b>`:`<button class="allp" title="Tous présents" onclick="allP('${g.id}','${d}')">✔P</button>`}</td>`; }).join('')}
         <td class="tot P">${sum(el,e=>dates.filter(d=>['P','R'].includes(presOf(g.id,e.id,d))).length)}</td><td class="tot A">${sum(el,e=>dates.filter(d=>presOf(g.id,e.id,d)==='A').length)}</td><td></td></tr>`;
     });
-    html += `<div class="card" style="padding:0;margin-bottom:18px"><div class="dayhead" style="background:${DAYCOL[j]}">${j.toUpperCase()} <span>${dates.length} semaines · ${dates.filter(d=>!ferieOf(d)).length} séances prévues</span>${F_PT.edit&&isAdmin()?`<button class="gadd" style="margin-left:auto" onclick="editGroupe(null,'${j}')">+ Groupe le ${j.toLowerCase()}</button>`:''}</div>
+    html += `<div class="card" style="padding:0;margin-bottom:18px"><div class="dayhead" style="background:${DAYCOL[j]}">${j.toUpperCase()} <span>${dates.length} semaines · ${dates.filter(d=>!ferieOf(d)).length} séances prévues</span>${F_PT.edit?`<button class="gadd" style="margin-left:auto" onclick="editGroupe(null,'${j}')">+ Groupe le ${j.toLowerCase()}</button>`:''}</div>
     <div class="tw"><table class="ftable">
       <thead><tr><th rowspan="4">N°</th><th rowspan="4" style="text-align:left;min-width:170px">Nom et Prénom</th><th rowspan="4">Âge</th><th rowspan="4">Niveau</th><th rowspan="4">Statut</th>
         ${phs.map(x=>`<th colspan="${x.n}" class="ph ${/^T\d$/.test(x.l)?'phT':''}">${h(x.l)}</th>`).join('')}<th colspan="3" rowspan="2" class="mo">TOTAL ${t}</th></tr>
@@ -1980,7 +1981,7 @@ function fichePres(id){
   const e=elv(id), s=presenceStats(e);
   openModal(mHead('📚 Parcours – '+h(e.nom)) + `<p class="small muted">${s.P} présent · ${s.R} retard · ${s.A} absent · ${s.abs??'—'} % d'absence</p>
     ${parcoursHtml(e)}
-    <div class="mfoot">${isAdmin()?`<button class="btn g" onclick="ficheEleve('${id}')">Fiche complète</button>`:''}<button class="btn" onclick="closeModal()">Fermer</button></div>`, true);
+    <div class="mfoot"><button class="btn g" onclick="ficheEleve('${id}')">Fiche complète</button><button class="btn" onclick="closeModal()">Fermer</button></div>`, true);
 }
 
 /* ---------------- STOCK ---------------- */
@@ -2188,7 +2189,7 @@ function kitItem(kid){
 
 /* ---------------- COMPÉTITIONS ---------------- */
 VIEWS.competitions = () => {
-  setHead('Compétitions & événements', 'Participants, rôles et prix obtenus', isAdmin()?`<button class="hb" onclick="editComp()">+ Compétition</button>`:'');
+  setHead('Compétitions & événements', 'Participants, rôles et prix obtenus', canEdit()?`<button class="hb" onclick="editComp()">+ Compétition</button>`:'');
   const list = [...S.competitions].sort((a,b)=>a.date.localeCompare(b.date));
   const compet = S.eleves.filter(e=>S.tx.some(x=>x.eleve===e.id&&x.col==='comp'));
   const tabs=`<div class="tabs"><button class="${F_CP.v!=='bilan'?'on':''}" onclick="F_CP.v='';render()">📋 Compétitions & participants</button><button class="${F_CP.v==='bilan'?'on':''}" onclick="F_CP.v='bilan';render()">📊 Bilan</button></div>`;
@@ -2225,13 +2226,13 @@ const mcPaye = (mid,eid) => sum(S.tx.filter(x=>x.trim===mid && x.col==='mc' && x
 const mcDu = (mid,eid) => { const m=mcOf(mid); if(!m) return 0; const o=(m.prixE||{})[eid]; return (o!==undefined&&o!=='')?+o:(+m.prix||0); };
 let F_MC={id:'', v:'pres'};
 VIEWS.masterclass = () => {
-  setHead('Master class vacances', 'Du lundi au vendredi · 9h00 → 12h00 · présences, paiements et caisse', isAdmin()?`<button class="hb" onclick="editMC()">+ Master class</button>`:'');
+  setHead('Master class vacances', 'Du lundi au vendredi · 9h00 → 12h00 · présences, paiements et caisse', canEdit()?`<button class="hb" onclick="editMC()">+ Master class</button>`:'');
   const L=[...MC()].sort((a,b)=>a.debut.localeCompare(b.debut));
   const tin=sum(S.tx.filter(x=>x.col==='mc'),x=>x.montant)+sum(S.caisse.filter(c=>c.compte==='masterclass'&&c.sens==='in'),c=>c.montant), tout=sum(S.caisse.filter(c=>c.compte==='masterclass'&&c.sens!=='in'),c=>c.montant);
   if(!isAdmin()) F_MC.v='pres';
   const tabs=`<div class="tabs"><button class="${F_MC.v!=='pay'?'on':''}" onclick="F_MC.v='pres';render()">📋 Présences</button>${!isAdmin()?'':`<button class="${F_MC.v==='pay'?'on':''}" onclick="F_MC.v='pay';render()">💳 Paiements & caisse</button>`}</div>`;
   return tabs + `<div class="toolbar"><select onchange="F_MC.id=this.value;render()"><option value="">Toutes les master class</option>${L.map(m=>`<option value="${m.id}" ${F_MC.id===m.id?'selected':''}>${h(m.nom)} (${fmtD(m.debut)})</option>`).join('')}</select>
-    <span class="sp"></span>${isAdmin()?`<button class="btn o" onclick="editMC()">+ Master class</button>`:''}</div>
+    <span class="sp"></span>${canEdit()?`<button class="btn o" onclick="editMC()">+ Master class</button>`:''}</div>
   ${L.filter(m=>!F_MC.id||m.id===F_MC.id).map(mcCard).join('')||'<div class="card empty">Aucune master class. Cliquez sur « + Master class ».</div>'}`;
 };
 function mcCard(m){
@@ -2241,8 +2242,8 @@ function mcCard(m){
   const tin=sum(rec,x=>x.montant)+sum(recC,x=>x.montant), tout=sum(dep,x=>x.montant);
   const lib=x=>h(String(x.libelle||'').replace(m.nom+' – ',''));
   return `<div class="card" id="mc_${m.id}" style="padding:0;overflow:hidden;margin-bottom:22px">
-  <div class="dayhead" style="background:linear-gradient(90deg,#f39200,#7b3f86);border-radius:0;flex-wrap:wrap">🎓 ${h(m.nom).toUpperCase()}<span>${fmtD(m.debut)} → ${fmtD(m.fin)} · lundi→vendredi · ${h(m.horaire||'09h00-12h00').replace('-',' → ')} · ${dt(m.prix)} / enfant · ${rows.length} inscrit(s)</span>
-    <span class="cbtns" style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="gadd" onclick="mcAddKids('${m.id}')">👥 Ajouter des enfants</button><button class="gadd" onclick="mcAddLine('${m.id}')">➕ Ajouter adhérent</button>${isAdmin()?`<button class="gadd" onclick="editMC('${m.id}')">✏️</button>`:''}<button class="gadd" onclick="$('#printZone').innerHTML=document.getElementById('mc_${m.id}').outerHTML;window.print()">🖨️</button></span></div>
+  <div class="dayhead" style="background:linear-gradient(90deg,#f39200,#7b3f86);border-radius:0;flex-wrap:wrap">🎓 ${h(m.nom).toUpperCase()}<span>${fmtD(m.debut)} → ${fmtD(m.fin)} · lundi→vendredi · ${h(m.horaire||'09h00-12h00').replace('-',' → ')} · ${rows.length} inscrit(s)</span>
+    <span class="cbtns" style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="gadd" onclick="mcAddKids('${m.id}')">👥 Ajouter des enfants</button><button class="gadd" onclick="mcAddLine('${m.id}')">➕ Ajouter adhérent</button><button class="gadd" onclick="editMC('${m.id}')">✏️</button><button class="gadd" onclick="$('#printZone').innerHTML=document.getElementById('mc_${m.id}').outerHTML;window.print()">🖨️</button></span></div>
   ${F_MC.v==='pay' ? mcPayBody(m,rows) : `<div class="tw"><table class="ftable" style="width:100%"><thead><tr><th>N°</th><th style="text-align:left;min-width:170px">Nom et Prénom</th><th>Âge</th>${ds.map(d=>`<th class="dd ${d===TODAY?'today':''}">${jourOf(d).slice(0,3)}<br>${+d.slice(8)}-${MOIS_FR[+d.slice(5,7)-1]}</th>`).join('')}<th>Total P</th><th>Total A</th><th>Remarque</th><th></th></tr></thead><tbody>
   ${rows.map((e,i)=>{ const pr=m.pres[e.id]||{}; const P=ds.filter(d=>pr[d]==='P').length; const du=mcDu(m.id,e.id), pa=mcPaye(m.id,e.id);
     return `<tr><td class="idx">${i+1}</td><td class="nm2 ${stCls(e)}" onclick="ficheEleve('${e.id}')">${h(e.nom)}</td><td class="c">${ageOf(e)||''}</td>
@@ -2294,10 +2295,10 @@ function editMC(id){
   const m=id?mcOf(id):{nom:'Master class – ', debut:TODAY, fin:addDays(TODAY,4), horaire:'09h00-12h00', prix:0};
   formModal(id?'Modifier la master class':'Nouvelle master class', [
     {k:'nom',label:'Nom',full:1,req:1},{k:'debut',label:'Du',type:'date',req:1},{k:'fin',label:'Au',type:'date',req:1},
-    {k:'horaire',label:'Horaire'},{k:'prix',label:'Prix par enfant (DT)',type:'number'},
-  ], m, fd => { fd.prix=+fd.prix||0; if(fd.fin<fd.debut) fd.fin=fd.debut; fd.dates=weekdaysBetween(fd.debut,fd.fin);
+    {k:'horaire',label:'Horaire'},...(isAdmin()?[{k:'prix',label:'Prix par enfant (DT)',type:'number'}]:[]),
+  ], m, fd => { if(isAdmin()) fd.prix=+fd.prix||0; else delete fd.prix; if(fd.fin<fd.debut) fd.fin=fd.debut; fd.dates=weekdaysBetween(fd.debut,fd.fin);
     if(id) Object.assign(m,fd); else MC().push({id:uid('mc'), eleves:[], pres:{}, rem:{}, ...fd}); },
-  id?`<button type="button" class="btn r" style="margin-right:auto" onclick="if(confirm('Supprimer cette master class, ses présences et paiements ?')){S.masterclasses=MC().filter(x=>x.id!=='${id}');S.tx=S.tx.filter(x=>x.trim!=='${id}');S.caisse=S.caisse.filter(x=>x.refMc!=='${id}');closeModal();render();}">Supprimer</button>`:'');
+  id&&isAdmin()?`<button type="button" class="btn r" style="margin-right:auto" onclick="if(confirm('Supprimer cette master class, ses présences et paiements ?')){S.masterclasses=MC().filter(x=>x.id!=='${id}');S.tx=S.tx.filter(x=>x.trim!=='${id}');S.caisse=S.caisse.filter(x=>x.refMc!=='${id}');closeModal();render();}">Supprimer</button>`:'');
 }
 function mcAddKids(mid){ const m=mcOf(mid); const el=[...S.eleves].filter(e=>e.statut!=='Abandon').sort((a,b)=>a.nom.localeCompare(b.nom));
   openModal(mHead('👥 '+h(m.nom)) + `<div style="max-height:380px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px">${el.map(e=>`<label style="display:flex;gap:8px;padding:5px 0"><input type="checkbox" class="mcc" value="${e.id}" ${m.eleves.includes(e.id)?'checked':''}> ${h(e.nom)} <span class="muted small">– ${h(e.jour||'externe')}</span></label>`).join('')}</div>
@@ -2416,7 +2417,7 @@ let F_CP={v:'',c:''};
 function palmares(list){
   const L = list.filter(c=>!F_CP.c || c.id===F_CP.c);
   return `<div class="toolbar"><select onchange="F_CP.c=this.value;render()"><option value="">Toutes les compétitions</option>${list.map(c=>`<option value="${c.id}" ${F_CP.c===c.id?'selected':''}>${h(c.nom)} – ${fmtD(c.date)}</option>`).join('')}</select>
-    <span class="sp"></span>${isAdmin()?`<button class="btn o" onclick="editComp()">+ Compétition</button>`:''}</div>
+    <span class="sp"></span>${canEdit()?`<button class="btn o" onclick="editComp()">+ Compétition</button>`:''}</div>
   ${L.map(compCard).join('') || '<div class="card empty">Aucune compétition. Cliquez sur « + Compétition ».</div>'}`;
 }
 function compCard(c){
@@ -2428,7 +2429,7 @@ function compCard(c){
   const lib = x => h(String(x.libelle||'').replace(c.nom+' – ',''));
   return `<div class="card comp-card" id="cc_${c.id}" style="padding:0;overflow:hidden;margin-bottom:22px">
     <div class="dayhead" style="background:linear-gradient(90deg,#7b3f86,#2e8fc0);border-radius:0;flex-wrap:wrap">🏆 ${h(c.nom).toUpperCase()}<span>${fmtD(c.date)} · ${h(c.lieu||'')} · ${rows.length} participant(s)</span>
-      <span class="cbtns" style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="gadd" onclick="editEquipe('${c.id}',0)">👥 Ajouter des enfants</button><button class="gadd" onclick="addLigne('${c.id}')">➕ Ajouter une ligne</button><button class="gadd" onclick="editEquipe('${c.id}')">+ Équipe</button>${isAdmin()?`<button class="gadd" onclick="editComp('${c.id}')">✏️</button>`:''}<button class="gadd" onclick="$('#printZone').innerHTML=document.getElementById('cc_${c.id}').outerHTML;window.print()">🖨️</button></span></div>
+      <span class="cbtns" style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="gadd" onclick="editEquipe('${c.id}',0)">👥 Ajouter des enfants</button><button class="gadd" onclick="addLigne('${c.id}')">➕ Ajouter une ligne</button><button class="gadd" onclick="editEquipe('${c.id}')">+ Équipe</button><button class="gadd" onclick="editComp('${c.id}')">✏️</button><button class="gadd" onclick="$('#printZone').innerHTML=document.getElementById('cc_${c.id}').outerHTML;window.print()">🖨️</button></span></div>
     <div class="tw"><table class="ptable" style="min-width:640px"><thead><tr><th style="width:50px">N°</th><th style="text-align:left">Nom et Prénom</th><th>Rôle (pilote…)</th><th>🏅 Prix obtenu</th><th style="width:50px"></th></tr></thead><tbody>
     ${rows.map((r,i)=>{ const px=(c.prixE||{})[r.e.id] ?? r.q.prix ?? ''; return `<tr><td class="idx">${i+1}</td><td class="nm" onclick="ficheEleve('${r.e.id}')">${h(r.e.nom)}</td>
       <td><input class="ein" style="width:100%" value="${h(c.rem[r.e.id]||'')}" placeholder="ex : Pilote" onchange="comp('${c.id}').rem['${r.e.id}']=this.value.trim();toast('Enregistré ✔')"></td>
@@ -2468,8 +2469,8 @@ function editComp(id){
   const c = id ? comp(id) : {date:addDays(TODAY,30), frais:0};
   formModal(id?'Modifier la compétition':'Nouvelle compétition', [
     {k:'nom',label:'Nom de l\'événement',full:1,req:1},{k:'date',label:'Date',type:'date',req:1},{k:'lieu',label:'Lieu',req:1},
-    {k:'frais',label:'Frais de participation / élève (DT)',type:'number'},
-  ], c, fd => { fd.frais=+fd.frais||0; if(id) Object.assign(c,fd); else S.competitions.push({id:uid('cp'),equipes:[{nom:'Équipe Tunarco',eleves:[]}],...fd}); });
+    ...(isAdmin()?[{k:'frais',label:'Frais de participation / élève (DT)',type:'number'}]:[]),
+  ], c, fd => { if(isAdmin()) fd.frais=+fd.frais||0; else delete fd.frais; if(id) Object.assign(c,fd); else S.competitions.push({id:uid('cp'),equipes:[{nom:'Équipe Tunarco',eleves:[]}],...fd}); });
 }
 function delComp(id){ if(!confirm('Supprimer cette compétition, ses paiements et ses dépenses ?')) return;
   S.competitions=S.competitions.filter(c=>c.id!==id); S.tx=S.tx.filter(x=>x.trim!==id); S.caisse=S.caisse.filter(x=>x.refComp!==id); render(); toast('Compétition supprimée'); }
@@ -2618,7 +2619,7 @@ function editGroupe(id, jour){
     {k:'formateur',label:'Formateur',type:'select',options:[['','— Aucun —'],...S.users.filter(u=>u.role==='formateur').map(u=>[u.id,u.nom])]},
   ], g, fd => { if(id){ Object.assign(g,fd); S.eleves.filter(e=>e.groupe===id).forEach(e=>e.jour=g.jour); } else S.groupes.push({id:uid('g'),...fd}); });
 }
-function toggleFerie(d){ if(!isAdmin()) return;
+function toggleFerie(d){
   const f=ferieOf(d);
   if(f){ if(f.debut===f.fin){ if(confirm(`Annuler « ${f.label} » (${fmtD(d)}) ? Ce jour redevient un jour de cours.`)){ S.feries.splice(S.feries.indexOf(f),1); render(); } }
          else alert(`Ce jour fait partie de « ${f.label} » (${fmtD(f.debut)} → ${fmtD(f.fin)}). Modifiez cette période dans Paramètres → Jours fériés & vacances.`); return; }
