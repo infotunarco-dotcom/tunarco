@@ -694,11 +694,12 @@ function syncSnapshot(){
   // tableaux complets (recopiés tels quels dans des onglets dédiés)
   const mcs=[...MC()].sort((a,b)=>a.debut.localeCompare(b.debut));
   const payRows=[]; mcs.forEach(m=>m.eleves.forEach(id=>{ const e=elv(id); if(!e) return; const du=mcDu(m.id,id), pa=mcPaye(m.id,id);
-    const L=S.tx.filter(x=>x.trim===m.id&&x.col==='mc'&&x.eleve===id); payRows.push([m.nom, fmtD(m.debut)+' → '+fmtD(m.fin), e.nom, e.jour||'externe', du, pa, Math.max(0,du-pa), [...new Set(L.map(x=>x.mode+(x.chqNum?' n°'+x.chqNum:'')))].join(', '), (m.rem||{})[id]||'']); }));
-  if(isAdmin()) snap['X|mcpay']={k:'table', file:'pay', tab:'PAIEMENT Master Class', rows:[['PAIEMENT MASTER CLASS VACANCES (lundi → vendredi, 9h → 12h)'],['Master class','Dates','Nom et Prénom','Jour','Prix','Payé','Reste','Mode de paiement','Remarque'],...payRows,['','','TT','',sum(payRows,r=>r[4]),sum(payRows,r=>r[5]),sum(payRows,r=>r[6])]], head:[1], total:[payRows.length+2]};
-  const presRows=[['PRÉSENCE MASTER CLASS VACANCES (lundi → vendredi, 9h → 12h)']], bold=[0];
+    const L=S.tx.filter(x=>x.trim===m.id&&x.col==='mc'&&x.eleve===id); payRows.push([m.nom, fmtD(m.debut)+' → '+fmtD(m.fin), e.nom, mcG(m,id), e.jour||'externe', du, pa, Math.max(0,du-pa), [...new Set(L.map(x=>x.mode+(x.chqNum?' n°'+x.chqNum:'')))].join(', '), (m.rem||{})[id]||'']); }));
+  if(isAdmin()) snap['X|mcpay']={k:'table', file:'pay', tab:'PAIEMENT Master Class', rows:[['PAIEMENT MASTER CLASS VACANCES (lundi → vendredi, G1 9h → 12h · G2 12h → 15h)'],['Master class','Dates','Nom et Prénom','Groupe','Jour','Prix','Payé','Reste','Mode de paiement','Remarque'],...payRows,['','','TT','','',sum(payRows,r=>r[5]),sum(payRows,r=>r[6]),sum(payRows,r=>r[7])]], head:[1], total:[payRows.length+2]};
+  const presRows=[['PRÉSENCE MASTER CLASS VACANCES (lundi → vendredi, G1 9h → 12h · G2 12h → 15h)']], bold=[0];
   mcs.forEach(m=>{ presRows.push([]); bold.push(presRows.length); presRows.push([m.nom+' · '+fmtD(m.debut)+' → '+fmtD(m.fin)]); bold.push(presRows.length); presRows.push(['N°','Nom et Prénom',...(m.dates||[]).map(d=>jourOf(d).slice(0,3)+' '+fmtD(d).slice(0,5)),'Total P','Total A']);
-    m.eleves.forEach((id,i)=>{ const e=elv(id); if(!e) return; const pr=(m.pres||{})[id]||{}; const v=(m.dates||[]).map(d=>pr[d]||''); presRows.push([i+1,e.nom,...v,v.filter(x=>x==='P').length,v.filter(x=>x==='A').length]); }); });
+    MCG(m).forEach(([gk,gh])=>{ const ids=m.eleves.filter(id=>elv(id)&&mcG(m,id)===gk); if(!ids.length) return; bold.push(presRows.length); presRows.push([gk+' : '+hLab(gh)]);
+    ids.forEach((id,i)=>{ const e=elv(id); const pr=(m.pres||{})[id]||{}; const v=(m.dates||[]).map(d=>pr[d]||''); presRows.push([i+1,e.nom,...v,v.filter(x=>x==='P').length,v.filter(x=>x==='A').length]); }); }); });
   snap['X|mcpres']={k:'table', file:'pres', tab:'Présence Master Class', rows:presRows, bold};
   const elRows=[...S.eleves].filter(e=>e.statut!=='Abandon'&&e.statut!=='Externe').sort((a,b)=>JOURS.indexOf(a.jour)-JOURS.indexOf(b.jour)||a.nom.localeCompare(b.nom))
     .map((e,i)=>[i+1,e.nom,e.naissance||'',ageOf(e)||'',e.niveau||'',e.ancien||'',e.statut,e.parent||'',e.tel1||'',e.tel2||'',e.email||'',e.jour||'',e.groupe?gLabel(grp(e.groupe)):'']);
@@ -2262,16 +2263,20 @@ VIEWS.competitions = () => {
         <button class="btn sm o" style="margin-top:8px" onclick="compDepense('${c.id}')">+ Dépense (bus, inscription, eau, composants…)</button></div>
     </div></div>`;}).join('')||'<div class="card empty">Aucune compétition pour le moment. Cliquez sur « + Compétition » en haut à droite.</div>'}`;
 };
-/* ===================== MASTER CLASS VACANCES (lundi → vendredi, 9h–12h) ===================== */
+/* ===================== MASTER CLASS VACANCES (lundi → vendredi, G1 9h–12h, G2 12h–15h) ===================== */
 const MC = () => { if(!S.masterclasses) S.masterclasses=defaultMC(); S.masterclasses.forEach(m=>{ if(!m.horaire||m.horaire==='09h00-10h00') m.horaire='09h00-12h00'; }); return S.masterclasses; };
 function weekdaysBetween(a,b){ const o=[]; let d=a; while(d<=b){ const j=jourOf(d); if(j!=='Samedi'&&j!=='Dimanche') o.push(d); d=addDays(d,1);} return o; }
+const MCG = m => [['G1',(m.gh&&m.gh.G1)||m.horaire||'09h00-12h00'],['G2',(m.gh&&m.gh.G2)||'12h00-15h00']];
+const mcG = (m,eid) => (m.grp&&m.grp[eid])||'G1';
+const hLab = x => String(x).replace(/0?(\d+)h00/g,'$1h').replace('-',' → ');
+function mcSetG(mid,eid,v){ const m=mcOf(mid); m.grp=m.grp||{}; m.grp[eid]=v; render(); toast(elv(eid).nom+' → '+v+' ✔'); }
 function defaultMC(){ return (S.feries||[]).filter(f=>f.type==='VACANCES').map((f,i)=>({id:'mc'+(i+1), nom:'Master class – '+f.label.replace(/\s*\(.*\)/,''), debut:f.debut, fin:f.fin, horaire:'09h00-12h00', prix:0, eleves:[], pres:{}, rem:{}, dates:weekdaysBetween(f.debut,f.fin)})).filter(m=>m.dates.length); }
 const mcOf = id => MC().find(m=>m.id===id);
 const mcPaye = (mid,eid) => sum(S.tx.filter(x=>x.trim===mid && x.col==='mc' && x.eleve===eid), x=>x.montant);
 const mcDu = (mid,eid) => { const m=mcOf(mid); if(!m) return 0; const o=(m.prixE||{})[eid]; return (o!==undefined&&o!=='')?+o:(+m.prix||0); };
 let F_MC={id:'', v:'pres'};
 VIEWS.masterclass = () => {
-  setHead('Master class vacances', 'Du lundi au vendredi · 9h00 → 12h00 · présences, paiements et caisse', canEdit()?`<button class="hb" onclick="editMC()">+ Master class</button>`:'');
+  setHead('Master class vacances', 'Du lundi au vendredi · 2 groupes : G1 9h → 12h et G2 12h → 15h · présences, paiements et caisse', canEdit()?`<button class="hb" onclick="editMC()">+ Master class</button>`:'');
   const L=[...MC()].sort((a,b)=>a.debut.localeCompare(b.debut));
   const tin=sum(S.tx.filter(x=>x.col==='mc'),x=>x.montant)+sum(S.caisse.filter(c=>c.compte==='masterclass'&&c.sens==='in'),c=>c.montant), tout=sum(S.caisse.filter(c=>c.compte==='masterclass'&&c.sens!=='in'),c=>c.montant);
   if(!isAdmin()) F_MC.v='pres';
@@ -2287,16 +2292,18 @@ function mcCard(m){
   const tin=sum(rec,x=>x.montant)+sum(recC,x=>x.montant), tout=sum(dep,x=>x.montant);
   const lib=x=>h(String(x.libelle||'').replace(m.nom+' – ',''));
   return `<div class="card" id="mc_${m.id}" style="padding:0;overflow:hidden;margin-bottom:22px">
-  <div class="dayhead" style="background:linear-gradient(90deg,#f39200,#7b3f86);border-radius:0;flex-wrap:wrap">🎓 ${h(m.nom).toUpperCase()}<span>${fmtD(m.debut)} → ${fmtD(m.fin)} · lundi→vendredi · ${h(m.horaire||'09h00-12h00').replace('-',' → ')} · ${rows.length} inscrit(s)</span>
+  <div class="dayhead" style="background:linear-gradient(90deg,#f39200,#7b3f86);border-radius:0;flex-wrap:wrap">🎓 ${h(m.nom).toUpperCase()}<span>${fmtD(m.debut)} → ${fmtD(m.fin)} · lundi→vendredi · ${MCG(m).map(([k,x])=>k+' '+hLab(x)).join(' · ')} · ${rows.length} inscrit(s)</span>
     <span class="cbtns" style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap"><button class="gadd" onclick="mcAddKids('${m.id}')">👥 Ajouter des enfants</button><button class="gadd" onclick="mcAddLine('${m.id}')">➕ Ajouter adhérent</button><button class="gadd" onclick="editMC('${m.id}')">✏️</button><button class="gadd" onclick="$('#printZone').innerHTML=document.getElementById('mc_${m.id}').outerHTML;window.print()">🖨️</button></span></div>
-  ${F_MC.v==='pay' ? mcPayBody(m,rows) : `<div class="tw"><table class="ftable" style="width:100%"><thead><tr><th>N°</th><th style="text-align:left;min-width:170px">Nom et Prénom</th><th>Âge</th>${ds.map(d=>`<th class="dd ${d===TODAY?'today':''}">${jourOf(d).slice(0,3)}<br>${+d.slice(8)}-${MOIS_FR[+d.slice(5,7)-1]}</th>`).join('')}<th>Total P</th><th>Total A</th><th>Remarque</th><th></th></tr></thead><tbody>
-  ${rows.map((e,i)=>{ const pr=m.pres[e.id]||{}; const P=ds.filter(d=>pr[d]==='P').length; const du=mcDu(m.id,e.id), pa=mcPaye(m.id,e.id);
+  ${F_MC.v==='pay' ? mcPayBody(m,rows) : `<div class="tw"><table class="ftable" style="width:100%"><thead><tr><th>N°</th><th style="text-align:left;min-width:170px">Nom et Prénom</th><th>Âge</th><th>Groupe</th>${ds.map(d=>`<th class="dd ${d===TODAY?'today':''}">${jourOf(d).slice(0,3)}<br>${+d.slice(8)}-${MOIS_FR[+d.slice(5,7)-1]}</th>`).join('')}<th>Total P</th><th>Total A</th><th>Remarque</th><th></th></tr></thead><tbody>
+  ${MCG(m).map(([gk,gh])=>{ const gr=rows.filter(e=>mcG(m,e.id)===gk); return `<tr class="grp"><td colspan="4">${gk} : ${hLab(gh)} <span style="font-weight:400">· ${gr.length} enfant(s)</span></td>${ds.map(()=>'<td></td>').join('')}<td colspan="4"></td></tr>`
+  + (gr.map((e,i)=>{ const pr=m.pres[e.id]||{}; const P=ds.filter(d=>pr[d]==='P').length;
     return `<tr><td class="idx">${i+1}</td><td class="nm2 ${stCls(e)}" onclick="ficheEleve('${e.id}')">${h(e.nom)}</td><td class="c">${ageOf(e)||''}</td>
+    <td class="sel"><select onchange="mcSetG('${m.id}','${e.id}',this.value)" style="font-weight:700">${MCG(m).map(([k,x])=>`<option value="${k}" ${k===gk?'selected':''}>${k} · ${hLab(x)}</option>`).join('')}</select></td>
     ${ds.map(d=>{ const v=pr[d]||''; return `<td class="pc ${v}" style="width:46px;min-width:46px"><select onchange="mcPres('${m.id}','${e.id}','${d}',this.value)"><option></option><option ${v==='P'?'selected':''}>P</option><option ${v==='A'?'selected':''}>A</option></select></td>`; }).join('')}
     <td class="tot P">${P}</td><td class="tot A">${ds.filter(d=>pr[d]==='A').length}</td>
     <td><input class="ein" style="width:120px" value="${h(m.rem[e.id]||'')}" placeholder="—" onchange="mcOf('${m.id}').rem['${e.id}']=this.value.trim();toast('Enregistré ✔')"></td>
-    <td><button class="btn sm r" onclick="mcRm('${m.id}','${e.id}')">✖</button></td></tr>`; }).join('') || `<tr><td colspan="${ds.length+7}" class="empty">Aucun enfant inscrit. Cliquez sur « 👥 Ajouter des enfants » ou « ➕ Ajouter une ligne ».</td></tr>`}
-  ${rows.length?`<tr class="sumr"><td></td><td>Présents</td><td></td>${ds.map(d=>`<td class="c"><b style="color:var(--green)">${rows.filter(e=>(m.pres[e.id]||{})[d]==='P').length}</b></td>`).join('')}<td></td><td></td><td colspan="2"></td></tr>`:''}
+    <td><button class="btn sm r" onclick="mcRm('${m.id}','${e.id}')">✖</button></td></tr>`; }).join('') || `<tr><td colspan="${ds.length+8}" class="empty small">Aucun enfant dans ce groupe.</td></tr>`)
+  + (gr.length?`<tr class="sumr"><td></td><td>Présents ${gk}</td><td></td><td></td>${ds.map(d=>`<td class="c"><b style="color:var(--green)">${gr.filter(e=>(m.pres[e.id]||{})[d]==='P').length}</b></td>`).join('')}<td></td><td></td><td colspan="2"></td></tr>`:''); }).join('')}
   </tbody></table></div>`}</div>`;
 }
 function mcPayBody(m,rows){
@@ -2333,30 +2340,30 @@ function payMC(){
       return `<tr><td class="idx">${i+1}</td><td class="nm" onclick="ficheEleve('${e.id}')">${h(e.nom)}</td><td>${h(e.jour||'externe')}</td><td class="tt">${dt(d)}</td>
       <td><span class="cell ${p?(p>=d&&d?'full':'part'):''}" onclick="mcPay('${m.id}','${e.id}')">${p?dt(p):'—'}</span></td>
       <td class="tt">${d&&p>=d?badge('Réglé','b-ok'):d?badge(dt(d-p),'b-warn'):'—'}</td><td class="small">${h([...new Set(T.map(x=>x.mode))].join(', '))}</td>
-      <td>${p<d&&e.tel1?`<a class="btn sm g" target="_blank" rel="noopener" href="${waLink(e.tel1,`Bonjour, ici l'académie Les Petits Génies (Tunarco). Pour la ${m.nom} (${fmtD(m.debut)} → ${fmtD(m.fin)}, 9h–12h), les frais de ${e.nom} sont de ${dt(d)}. Reste à payer : ${dt(d-p)}. Merci !`)}">💬</a>`:''}</td></tr>`; }).join('')||'<tr><td colspan="8" class="empty">Aucun participant.</td></tr>'}
+      <td>${p<d&&e.tel1?`<a class="btn sm g" target="_blank" rel="noopener" href="${waLink(e.tel1,`Bonjour, ici l'académie Les Petits Génies (Tunarco). Pour la ${m.nom} (${fmtD(m.debut)} → ${fmtD(m.fin)}, ${hLab(MCG(m).find(x=>x[0]===mcG(m,e.id))[1])}), les frais de ${e.nom} sont de ${dt(d)}. Reste à payer : ${dt(d-p)}. Merci !`)}">💬</a>`:''}</td></tr>`; }).join('')||'<tr><td colspan="8" class="empty">Aucun participant.</td></tr>'}
     <tr class="tot"><td></td><td>TT</td><td></td><td class="tt">${dt(du)}</td><td class="tt" style="text-align:center">${dt(pa)}</td><td class="tt">${dt(Math.max(0,du-pa))}</td><td colspan="2"></td></tr></tbody></table></div></div>`; }).join('')||'<div class="card empty">Aucune master class.</div>'}`;
 }
 function editMC(id){
   const m=id?mcOf(id):{nom:'Master class – ', debut:TODAY, fin:addDays(TODAY,4), horaire:'09h00-12h00', prix:0};
   formModal(id?'Modifier la master class':'Nouvelle master class', [
     {k:'nom',label:'Nom',full:1,req:1},{k:'debut',label:'Du',type:'date',req:1},{k:'fin',label:'Au',type:'date',req:1},
-    {k:'horaire',label:'Horaire'},...(isAdmin()?[{k:'prix',label:'Prix par enfant (DT)',type:'number'}]:[]),
-  ], m, fd => { if(isAdmin()) fd.prix=+fd.prix||0; else delete fd.prix; if(fd.fin<fd.debut) fd.fin=fd.debut; fd.dates=weekdaysBetween(fd.debut,fd.fin);
+    {k:'h1',label:'Horaire groupe G1'},{k:'h2',label:'Horaire groupe G2'},...(isAdmin()?[{k:'prix',label:'Prix par enfant (DT)',type:'number'}]:[]),
+  ], {...m, h1:MCG(m)[0][1], h2:MCG(m)[1][1]}, fd => { fd.gh={G1:fd.h1||'09h00-12h00', G2:fd.h2||'12h00-15h00'}; fd.horaire=fd.gh.G1; delete fd.h1; delete fd.h2; if(isAdmin()) fd.prix=+fd.prix||0; else delete fd.prix; if(fd.fin<fd.debut) fd.fin=fd.debut; fd.dates=weekdaysBetween(fd.debut,fd.fin);
     if(id) Object.assign(m,fd); else MC().push({id:uid('mc'), eleves:[], pres:{}, rem:{}, ...fd}); },
   id&&isAdmin()?`<button type="button" class="btn r" style="margin-right:auto" onclick="if(confirm('Supprimer cette master class, ses présences et paiements ?')){S.masterclasses=MC().filter(x=>x.id!=='${id}');S.tx=S.tx.filter(x=>x.trim!=='${id}');S.caisse=S.caisse.filter(x=>x.refMc!=='${id}');closeModal();render();}">Supprimer</button>`:'');
 }
 function mcAddKids(mid){ const m=mcOf(mid); const el=[...S.eleves].filter(e=>e.statut!=='Abandon').sort((a,b)=>a.nom.localeCompare(b.nom));
   openModal(mHead('👥 '+h(m.nom)) + `<div style="max-height:380px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px">${el.map(e=>`<label style="display:flex;gap:8px;padding:5px 0"><input type="checkbox" class="mcc" value="${e.id}" ${m.eleves.includes(e.id)?'checked':''}> ${h(e.nom)} <span class="muted small">– ${h(e.jour||'externe')}</span></label>`).join('')}</div>
-  <div class="mfoot"><button class="btn" onclick="const m=mcOf('${mid}');m.eleves=[...document.querySelectorAll('.mcc:checked')].map(x=>x.value);closeModal();render();toast('Liste enregistrée ✔')">Enregistrer</button></div>`); }
+  <div class="mfoot"><span class="small muted">Nouveaux enfants dans :</span><select id="mcgsel">${MCG(m).map(([k,x])=>`<option value="${k}">${k} · ${hLab(x)}</option>`).join('')}</select><button class="btn" onclick="const m=mcOf('${mid}');const old=new Set(m.eleves);m.eleves=[...document.querySelectorAll('.mcc:checked')].map(x=>x.value);m.grp=m.grp||{};const gs=document.getElementById('mcgsel').value;m.eleves.forEach(id=>{if(!old.has(id))m.grp[id]=gs;});closeModal();render();toast('Liste enregistrée ✔')">Enregistrer</button></div>`); }
 function mcAddLine(mid){ const m=mcOf(mid); const el=[...S.eleves].filter(e=>e.statut!=='Abandon'&&!m.eleves.includes(e.id)).sort((a,b)=>a.nom.localeCompare(b.nom));
   formModal('➕ Ajouter un adhérent · '+m.nom, [
     {k:'eleve',label:'Élève de l\'académie',type:'select',full:1,options:[['','— choisir —'],...el.map(e=>[e.id,`${e.nom} – ${e.jour}`])]},
     {k:'nom',label:'… ou nouvel enfant (hors académie)',full:1,ph:'Nom et prénom'},{k:'tel1',label:'Téléphone parent'},{k:'age',label:'Âge',type:'number'},
-    {k:'rem',label:'Remarque',full:1},
-  ], {}, fd => { let id=fd.eleve;
+    {k:'grp',label:'Groupe',type:'select',options:MCG(m).map(([k,x])=>[k,k+' · '+hLab(x)])},{k:'rem',label:'Remarque',full:1},
+  ], {grp:'G1'}, fd => { let id=fd.eleve;
     if(!id){ if(!fd.nom.trim()){ toast('Choisissez un élève ou tapez un nom'); return false; }
       const e={id:uid('e'), nom:fd.nom.trim(), jour:'', groupe:'', niveau:'À préciser', ancien:'Nouveau', statut:'Externe', tel1:fd.tel1||'', tel2:'', parent:'', email:'', naissance:'', age:+fd.age||'', type:'', mode:'', tarif:0, insc:0, rq:'', notes:''}; S.eleves.push(e); id=e.id; }
-    if(!m.eleves.includes(id)) m.eleves.push(id); m.rem=m.rem||{}; if(fd.rem) m.rem[id]=fd.rem; toast('Ajouté ✔'); }); }
+    if(!m.eleves.includes(id)) m.eleves.push(id); m.grp=m.grp||{}; m.grp[id]=fd.grp||'G1'; m.rem=m.rem||{}; if(fd.rem) m.rem[id]=fd.rem; toast('Ajouté ✔'); }); }
 function mcRm(mid,eid){ const m=mcOf(mid); if(!confirm('Retirer '+(elv(eid)?.nom||'')+' de la master class ?')) return; m.eleves=m.eleves.filter(x=>x!==eid); render(); }
 function mcPres(mid,eid,d,v){ const m=mcOf(mid); m.pres[eid]=m.pres[eid]||{}; if(v) m.pres[eid][d]=v; else delete m.pres[eid][d]; render(); }
 function mcPay(mid,eid){ const m=mcOf(mid), e=elv(eid), du=mcDu(mid,eid), pa=mcPaye(mid,eid);
