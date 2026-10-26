@@ -988,7 +988,7 @@ function payTrim(t){
         <td><select onchange="setF('${e.id}','type',this.value)"><option value="">—</option>${TYPES.map(m=>`<option ${e.type===m?'selected':''}>${m}</option>`).join('')}</select></td>
         <td style="white-space:nowrap"><button class="btn sm o" onclick="payGrid('${e.id}')">Payer</button>
           ${s.retard>0||s.reste>0?`<a class="btn sm g" title="Rappel WhatsApp" target="_blank" rel="noopener" href="${waLink(e.tel1, `Bonjour, ici l'académie Les Petits Génies (Tunarco). Petit rappel : il reste ${dt(s.reste)} à régler pour ${e.nom} (${T.nom}). Merci beaucoup !`)}">💬</a>`:''}
-          <button class="btn sm g" onclick="editEleve('${e.id}')">Modifier</button></td></tr>`;
+          <button class="btn sm g" onclick="editEleve('${e.id}')">Modifier</button>${isAdmin()?` <button class="btn sm r" title="Supprimer l'élève" onclick="delEleveDef('${e.id}')">🗑</button>`:''}</td></tr>`;
     });
   });
   const totCol = c => sum(list, x=>cellSum(x.e.id,t,c));
@@ -1560,7 +1560,7 @@ ${(()=>{ const row=(e,i)=>{ const g=grp(e.groupe); const f=(k,t,w,ph)=>`<input c
       <td>${f('email','email',190,'email@…')}</td>
       <td><select class="ein ${stCls(e)}" onchange="setStatutPres('${e.id}',this.value)"><option value=""></option>${STATUTS_PRES.map(n=>`<option ${e.ancien===n?'selected':''}>${n}</option>`).join('')}</select></td>
       ${CHAMPS().map((c,ci)=>`<td><input class="ein" style="width:130px" value="${h((e.cf||{})[c]||'')}" placeholder="—" onchange="setCF('${e.id}',${ci},this.value)"></td>`).join('')}
-      <td style="white-space:nowrap">${e.tel1?`<a class="btn sm g" href="${waLink(e.tel1)}" target="_blank" rel="noopener" title="WhatsApp">💬</a> `:''}${e.email?`<a class="btn sm g" href="mailto:${h(e.email)}" title="Email">✉️</a> `:''}<button class="btn sm g" title="Fiche complète" onclick="ficheEleve('${e.id}')">👁</button> <button class="btn sm g" onclick="editEleve('${e.id}')">✏️</button> ${isAdmin()?`<button class="btn sm r" onclick="del('eleves','${e.id}','${js(h(e.nom))}',id=>{S.tx=S.tx.filter(x=>x.eleve!==id)})">🗑</button>`:''}</td></tr>`;};
+      <td style="white-space:nowrap">${e.tel1?`<a class="btn sm g" href="${waLink(e.tel1)}" target="_blank" rel="noopener" title="WhatsApp">💬</a> `:''}${e.email?`<a class="btn sm g" href="mailto:${h(e.email)}" title="Email">✉️</a> `:''}<button class="btn sm g" title="Fiche complète" onclick="ficheEleve('${e.id}')">👁</button> <button class="btn sm g" onclick="editEleve('${e.id}')">✏️</button> ${isAdmin()?`<button class="btn sm r" title="Supprimer l'élève" onclick="delEleveDef('${e.id}')">🗑</button>`:''}</td></tr>`;};
     const head=`<tr><th>N°</th><th>Nom et Prénom</th><th>Date de naissance</th><th>Âge</th><th>Parent</th><th>Téléphone 1</th><th>Téléphone 2</th><th>Email</th><th>Ancien / Nouveau</th>${CHAMPS().map(c=>`<th>${h(c)}</th>`).join('')}<th></th></tr>`;
     const jours = JOURS.filter(j=>list.some(e=>e.jour===j));
     if(!jours.length) return '<div class="card empty">Aucun élève trouvé.</div>';
@@ -1916,7 +1916,7 @@ function rmExtra(id,gid){ const e=elv(id); e.extra=(e.extra||[]).filter(x=>x!==g
 function reintegrer(id){ const e=elv(id); e.statut='Actif'; e.ancien='Ancien'; delete e.quitDate; render(); toast(e.nom+' réintégré ✔'); }
 function delEleveDef(id){ if(!isAdmin()) return toast('Réservé à l\'administrateur'); const e=elv(id); if(!confirm(`Supprimer DÉFINITIVEMENT ${e.nom} ?\nSes paiements et présences seront effacés.\n(Pour garder l'historique, utilisez plutôt « a quitté le club ».)`)) return;
   S.eleves=S.eleves.filter(x=>x.id!==id); S.tx=S.tx.filter(x=>x.eleve!==id); S.seances.forEach(s=>delete s.presences[id]);
-  S.competitions.forEach(c=>c.equipes.forEach(q=>q.eleves=q.eleves.filter(x=>x!==id))); render(); toast('Élève supprimé'); }
+  S.competitions.forEach(c=>c.equipes.forEach(q=>q.eleves=q.eleves.filter(x=>x!==id))); (S.masterclasses||[]).forEach(m=>m.eleves=m.eleves.filter(x=>x!==id)); _C.si=null; render(); toast('Élève supprimé'); }
 function addToGroup(gid){
   const g=grp(gid);
   const autres=[...S.eleves].filter(e=>!inG(e,gid) && e.statut!=='Abandon').sort((a,b)=>a.nom.localeCompare(b.nom));
