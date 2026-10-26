@@ -141,6 +141,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
 .ftable th.today{background:var(--orange)}
 .ftable td{border:1px solid var(--line);padding:4px 6px;white-space:nowrap}
 .ftable td.c{text-align:center}
+.nt-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:860px){.nt-grid{grid-template-columns:1fr}}.nt-task{display:flex;gap:10px;align-items:flex-start;padding:8px 4px;border-bottom:1px solid var(--line)}.nt-task input[type=checkbox]{width:20px;height:20px;margin-top:2px}.nt-task.done .nt-txt{text-decoration:line-through;color:#888}.nt-txt{font-weight:600;word-break:break-word}.nt-note{background:#fffbe6;border:1px solid #f3e3a1;border-radius:10px;padding:8px 10px;margin-top:10px}.nt-note.pin{background:#fff3c4;border-color:#f39200}.nt-area{width:100%;border:0;background:transparent;resize:vertical;font:inherit;padding:4px 0}.ntb{background:var(--bad);color:#fff;border-radius:9px;padding:0 6px;font-size:11px}
 .ftable tr.frow td{background:#dbe8ff;color:#1d4ed8;font-size:13px;padding:3px 8px}.ftable td.fcol select{color:#1d4ed8;font-weight:700}.ftable .fini{display:inline-block;margin-left:2px;font-size:9px;font-weight:800;color:#fff;background:#1d4ed8;border-radius:3px;padding:0 3px;vertical-align:middle}.ftable .fbtn{border:1px solid #c7d2e3;background:#fff;color:#1d4ed8;font-weight:700;font-size:11px;border-radius:4px;padding:1px 4px;cursor:pointer;min-width:40px;line-height:1.25}.ftable td.fsel{padding:1px 2px}.ftable td.fsel select{font-size:11px;padding:1px 2px;max-width:76px;border:1px solid #c7d2e3;border-radius:4px;background:#fff;color:#1d4ed8;font-weight:700}
 .ftable td.nm2{font-weight:600;cursor:pointer}.ftable td.nm2:hover{color:var(--blue)}
 .ftable tr.grp td{background:#ef7f2d;color:#fff;font-weight:700;border-color:#ef7f2d}
@@ -536,6 +537,7 @@ const NAV = [
   {k:'stock', t:'📦 Stock'},
   {k:'competitions', t:'🏆 Compétitions'},
   {k:'masterclass', t:'🎓 Master class'},
+  {k:'notes', t:'📝 Notes & tâches'},
   {k:'utilisateurs', t:'🔐 Formateurs', admin:true},
   {k:'parametres', t:'⚙️ Paramètres', admin:true},
 ];
@@ -563,7 +565,7 @@ function go(k){
   if(!item || (item.admin && !isAdmin())) k = isAdmin()?'dashboard':'feuille';
   VIEW = k; anSelFill();
   const MN=S.menu||{};
-  $('#nav').innerHTML = NAV.filter(n=>(!n.admin || isAdmin()) && !(MN[n.k]||{}).hidden).map(n=>`<a class="${n.k===k?'on':''}" onclick="go('${n.k}')">${h((MN[n.k]||{}).t||n.t)}</a>`).join('') + (isAdmin()?`<a class="mob" onclick="exportData()">💾 Sauvegarder les données</a><a class="mob" onclick="document.getElementById('imp').click()">📂 Charger une sauvegarde</a>`:'');
+  $('#nav').innerHTML = NAV.filter(n=>(!n.admin || isAdmin()) && !(MN[n.k]||{}).hidden).map(n=>`<a class="${n.k===k?'on':''}" onclick="go('${n.k}')">${h((MN[n.k]||{}).t||n.t)}${n.k==='notes'&&ntOpen()?` <b class="ntb">${ntOpen()}</b>`:''}</a>`).join('') + (isAdmin()?`<a class="mob" onclick="exportData()">💾 Sauvegarder les données</a><a class="mob" onclick="document.getElementById('imp').click()">📂 Charger une sauvegarde</a>`:'');
   $('#side').classList.remove('open');
   render(); window.scrollTo(0,0);
 }
@@ -2561,6 +2563,48 @@ function delEquipe(cid,qi){ const c=comp(cid); if(!confirm('Supprimer cette équ
 
 
 /* ---------------- FORMATEURS & ACCÈS ---------------- */
+/* ===================== BLOC-NOTES & TÂCHES (par formateur) ===================== */
+let F_NT = {u:'', done:false};
+const NTS = () => (S.notes = S.notes || []);
+const TDS = () => (S.todos = S.todos || []);
+const ntOpen = () => S.session ? TDS().filter(t=>!t.done && t.user===S.session.id).length : 0;
+function ntUser(){ if(!isAdmin()) return S.session.id; return F_NT.u; }   // '' = tous (admin)
+VIEWS.notes = () => {
+  setHead('Bloc-notes & tâches', isAdmin()?'Les notes et la liste de tâches de chaque formateur — vous pouvez aussi leur donner des tâches':'Vos notes personnelles et votre liste de tâches');
+  const U = ntUser(), who = id => h(usr(id).nom||'?');
+  const people = S.users.filter(u=>u.role==='formateur' || u.id===S.session.id);
+  const sel = isAdmin()?`<div class="toolbar"><span class="small muted">Formateur :</span>${[['','👥 Tous'],...people.map(u=>[u.id,u.nom])].map(([id,n])=>`<button class="btn sm ${F_NT.u===id?'':'g'}" onclick="F_NT.u='${id}';render()">${h(n)}${id&&TDS().filter(t=>!t.done&&t.user===id).length?' ('+TDS().filter(t=>!t.done&&t.user===id).length+')':''}</button>`).join('')}</div>`:'';
+  const T = TDS().filter(t=>!U||t.user===U), open=T.filter(t=>!t.done).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999')), done=T.filter(t=>t.done).sort((a,b)=>(b.doneAt||'').localeCompare(a.doneAt||''));
+  const tRow = t => { const late=!t.done&&t.due&&t.due<TODAY;
+    return `<div class="nt-task ${t.done?'done':''}"><input type="checkbox" ${t.done?'checked':''} onchange="tdToggle('${t.id}')">
+      <div style="flex:1;min-width:0"><div class="nt-txt">${h(t.text)}</div><div class="small muted">${t.due?`<span style="${late?'color:var(--bad);font-weight:700':''}">📅 ${fmtD(t.due)}${late?' · en retard':''}</span> · `:''}${!U?'👤 '+who(t.user)+' · ':''}${t.par&&t.par!==t.user?'donnée par '+who(t.par):'perso'}</div></div>
+      ${t.par===S.session.id||t.user===S.session.id||isAdmin()?`<button class="btn sm g" title="Modifier" onclick="tdEdit('${t.id}')">✏️</button><button class="btn sm r" title="Supprimer" onclick="tdDel('${t.id}')">🗑</button>`:''}</div>`; };
+  const N = NTS().filter(n=>!U||n.user===U).sort((a,b)=>(b.pin?1:0)-(a.pin?1:0)||(b.date||'').localeCompare(a.date||''));
+  const nCard = n => `<div class="nt-note ${n.pin?'pin':''}"><div class="small muted" style="display:flex;gap:6px;align-items:center">${n.pin?'📌 ':''}${fmtD(n.date.slice(0,10))}${!U?' · 👤 '+who(n.user):''}<span class="sp" style="flex:1"></span>
+      <button class="mini" title="Épingler" onclick="ntPin('${n.id}')">📌</button><button class="mini r" title="Supprimer" onclick="ntDel('${n.id}')">🗑</button></div>
+      <textarea class="nt-area" rows="${Math.min(10,Math.max(3,String(n.text).split('\n').length+1))}" onchange="ntSet('${n.id}',this.value)">${h(n.text)}</textarea></div>`;
+  const canAdd = !!U || !isAdmin();
+  return sel + `<div class="nt-grid">
+   <div class="card"><h3 style="margin-top:0">✅ Tâches à faire <span class="small muted">· ${open.length} en cours</span></h3>
+    ${canAdd?`<div class="toolbar"><input id="tdTxt" placeholder="Nouvelle tâche… (ex : préparer kits robot G2)" style="flex:1;min-width:180px" onkeydown="if(event.key==='Enter')tdAdd()"><input id="tdDue" type="date" title="Échéance (optionnel)"><button class="btn o" onclick="tdAdd()">+ Ajouter</button></div>`:`<div class="small muted" style="margin-bottom:8px">Choisissez un formateur en haut pour lui ajouter une tâche.</div>`}
+    ${open.map(tRow).join('')||'<div class="empty small">Aucune tâche en cours 🎉</div>'}
+    ${done.length?`<div style="margin-top:10px"><button class="btn sm g" onclick="F_NT.done=!F_NT.done;render()">${F_NT.done?'▾':'▸'} Terminées (${done.length})</button>${F_NT.done?done.map(tRow).join(''):''}</div>`:''}
+   </div>
+   <div class="card"><h3 style="margin-top:0">📝 Bloc-notes</h3>
+    ${canAdd?`<textarea id="ntTxt" rows="3" placeholder="Écrire une note… (idées, remarques sur les élèves, matériel à acheter…)" style="width:100%"></textarea><div class="toolbar" style="margin-top:6px"><span class="sp"></span><button class="btn o" onclick="ntAdd()">+ Ajouter la note</button></div>`:''}
+    ${N.map(nCard).join('')||'<div class="empty small">Aucune note.</div>'}
+   </div></div>`;
+};
+function tdAdd(){ const t=$('#tdTxt').value.trim(); if(!t) return toast('Écrivez la tâche'); const u=ntUser()||S.session.id;
+  TDS().push({id:uid('td'), user:u, par:S.session.id, text:t, due:$('#tdDue').value||'', done:false, date:new Date().toISOString()}); render(); toast(u===S.session.id?'Tâche ajoutée ✔':'Tâche donnée à '+usr(u).nom+' ✔'); setTimeout(()=>$('#tdTxt')&&$('#tdTxt').focus(),50); }
+function tdToggle(id){ const t=TDS().find(x=>x.id===id); t.done=!t.done; t.doneAt=t.done?new Date().toISOString():''; render(); toast(t.done?'Tâche terminée ✔':'Tâche remise en cours'); }
+function tdDel(id){ if(!confirm('Supprimer cette tâche ?')) return; S.todos=TDS().filter(x=>x.id!==id); render(); }
+function tdEdit(id){ const t=TDS().find(x=>x.id===id);
+  formModal('Modifier la tâche', [{k:'text',label:'Tâche',full:1,req:1},{k:'due',label:'Échéance',type:'date'},...(isAdmin()?[{k:'user',label:'Pour',type:'select',options:S.users.filter(u=>u.role==='formateur'||u.id===S.session.id).map(u=>[u.id,u.nom])}]:[])], t, fd=>{ Object.assign(t,fd); }); }
+function ntAdd(){ const t=$('#ntTxt').value.trim(); if(!t) return toast('Écrivez la note'); NTS().push({id:uid('nt'), user:ntUser()||S.session.id, text:t, date:new Date().toISOString(), pin:false}); render(); toast('Note ajoutée ✔'); }
+function ntSet(id,v){ const n=NTS().find(x=>x.id===id); n.text=v; toast('Note enregistrée ✔'); }
+function ntPin(id){ const n=NTS().find(x=>x.id===id); n.pin=!n.pin; render(); }
+function ntDel(id){ if(!confirm('Supprimer cette note ?')) return; S.notes=NTS().filter(x=>x.id!==id); render(); }
 VIEWS.utilisateurs = () => { setHead('Formateurs & accès', 'Chaque formateur a son identifiant et ne voit que ses groupes', `<button class="hb" onclick="editUser()">+ Formateur</button>`);
   return `<div class="card tw" style="padding:0"><table><tr><th>Nom</th><th>Identifiant</th><th>Rôle</th><th>Groupes attribués</th><th>Accès</th><th></th></tr>
   ${S.users.map(u=>`<tr><td><b>${h(u.nom)}</b><div class="small muted">${h(u.tel||'')}</div></td><td><code>${h(u.login)}</code></td>
