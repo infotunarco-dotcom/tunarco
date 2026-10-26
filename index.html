@@ -449,7 +449,9 @@ const FORMS = () => S.users.filter(u=>u.role==='formateur');
 /** formateur qui a fait la séance : choisi, sinon celui qui a pointé (si formateur), sinon le formateur du groupe */
 function seForm(s,g){ if(!s) return ''; if(s.form) return s.form; const u=S.users.find(x=>x.id===s.par); if(u&&u.role==='formateur') return u.id; return (g||grp(s.groupe)).formateur||''; }
 const eForm = (e,gid) => (e&&e.fg&&e.fg[gid])||'';
-function setEForm(eid,gid,v){ const e=elv(eid); e.fg=e.fg||{}; if(v) e.fg[gid]=v; else delete e.fg[gid]; render(); toast(e.nom+(v?' → '+usr(v).nom:' : formateur retiré')+' ✔'); }
+function setEForm(eid,gid,v){ if(v==='__gerer'){ render(); return go('utilisateurs'); }
+  if(v==='__add'){ render(); const n0=S.users.length; window._afterUser=()=>{ if(S.users.length>n0){ const u=S.users[S.users.length-1]; if(u.role==='formateur') setEForm(eid,gid,u.id); } }; return editUser(); }
+  const e=elv(eid); e.fg=e.fg||{}; if(v) e.fg[gid]=v; else delete e.fg[gid]; render(); toast(e.nom+(v?' → '+usr(v).nom:' : formateur retiré')+' ✔'); }
 function seForms(s,g){ if(!s) return []; { const fs=new Set(); Object.entries(s.presences||{}).forEach(([eid,v])=>{ if(v==='P'||v==='R'){ const f=(s.pf&&s.pf[eid])||eForm(elv(eid),s.groupe); if(f) fs.add(f); } }); if(fs.size) return [...fs]; }
   if(s.pf&&Object.values(s.pf).some(Boolean)) return [...new Set(Object.values(s.pf).filter(Boolean))]; if(Array.isArray(s.forms)&&s.forms.length) return s.forms; const f=seForm(s,g); return f?[f]:[]; }
 function stuForm(s,eid,g){ if(!s) return ''; if(s.pf&&s.pf[eid]) return s.pf[eid]; { const f=eForm(elv(eid),s.groupe); if(f) return f; } if(s.pf&&Object.values(s.pf).some(Boolean)) return ''; const f=seForms(s,g); return f.length===1?f[0]:''; }
@@ -1881,7 +1883,7 @@ VIEWS.feuille = () => {
         P+=Rr; const n=P+A, taux=n?Math.round(P/n*100):null;
         rows += `<tr data-g="${g.id}"><td class="idx">${i+1}</td>${F_PT.edit?`<td class="nm2 ${stCls(e)}" style="white-space:nowrap"><input class="ein" style="width:150px;font-weight:600" value="${h(e.nom)}" onchange="elv('${e.id}').nom=this.value.trim();toast('Enregistré ✔')"> <button class="mini" title="Déplacer / modifier" onclick="editInGroup('${e.id}')">🔀</button>${e.groupe!==g.id?`<button class="mini" title="Retirer de ce groupe (reste dans son groupe principal)" onclick="rmExtra('${e.id}','${g.id}')">✖</button>`:`<button class="mini" title="A quitté le club" onclick="setStatutPres('${e.id}',QUIT)">🚪</button>`}${isAdmin()?`<button class="mini r" title="Supprimer définitivement" onclick="delEleveDef('${e.id}')">🗑</button>`:''}</td>`
           :`<td class="nm2 ${stCls(e)}" onclick="${isAdmin()?`editInGroup('${e.id}')`:`editEleve('${e.id}')`}" title="Modifier / déplacer / retirer">${h(e.nom)} <span class="nmed">✏️</span></td>`}<td class="c">${F_PT.edit?`<input class="ein" type="number" min="3" max="20" style="width:52px" value="${ageOf(e)||''}" onchange="const x=elv('${e.id}'); if(!x.naissance){x.age=+this.value||'';} toast('Enregistré ✔')">`:(ageOf(e)||'')}</td>
-          <td class="sel fcol"><select title="Formateur de l'élève dans ce groupe" onchange="setEForm('${e.id}','${g.id}',this.value)"><option value="">—</option>${FORMS().map(u=>`<option value="${u.id}" ${eForm(e,g.id)===u.id?'selected':''}>${h(u.nom)}</option>`).join('')}</select></td>
+          <td class="sel fcol"><select title="Formateur de l'élève dans ce groupe" onchange="setEForm('${e.id}','${g.id}',this.value)"><option value="">—</option>${FORMS().map(u=>`<option value="${u.id}" ${eForm(e,g.id)===u.id?'selected':''}>${h(u.nom)}</option>`).join('')}${isAdmin()?'<option value="__add">➕ Ajouter un formateur…</option><option value="__gerer">🗑 Supprimer / gérer les formateurs…</option>':''}</select></td>
           <td class="sel"><select onchange="setF('${e.id}','niveau',this.value||'À préciser')"><option value=""></option>${NIVEAUX.map(n=>`<option ${e.niveau===n?'selected':''}>${n}</option>`).join('')}</select></td>
           ${g.compet?`<td class="sel st-comp" style="padding:0 8px;font-weight:600">compétiteurs</td>`:`<td class="sel ${stCls(e)}"><select onchange="setStatutPres('${e.id}',this.value)"><option value=""></option>${STATUTS_PRES.map(n=>`<option ${e.ancien===n?'selected':''}>${n}</option>`).join('')}</select></td>`}
           ${cells}<td class="tot P">${P}</td><td class="tot A">${A}</td><td class="tot">${taux===null?'—':taux+'%'}</td></tr>`;
@@ -2574,6 +2576,7 @@ function editUser(id){
     if(fd.pass && fd.pass.length<6){ toast('Mot de passe : 6 caractères minimum'); return false; }
     if(!fd.pass) delete fd.pass;
     if(id) Object.assign(u,fd); else S.users.push({id:uid('u'),...fd});
+    if(window._afterUser){ const f=window._afterUser; window._afterUser=null; setTimeout(f,0); }
   });
 }
 function assignGroups(uid){
