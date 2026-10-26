@@ -1885,7 +1885,7 @@ VIEWS.feuille = () => {
           return `<td class="pc ${v} ${d===TODAY?'today':''} ${fer&&!v?'ferc':''}" data-d="${d}" title="${fer?h(fer.label)+' – vous pouvez quand même noter la présence':(lp?h('S'+lp.n+' · '+lp.t):lt)}${v&&stuForm(seanceOf(g.id,d),e.id,g)?' – formateur : '+h(usr(stuForm(seanceOf(g.id,d),e.id,g)).nom):''}"><select onchange="setPres('${g.id}','${e.id}','${d}',this.value,this)"><option value=""></option><option ${v==='P'?'selected':''}>P</option><option ${v==='A'?'selected':''}>A</option>${v==='R'?'<option selected>R</option>':''}</select>${v==='P'||v==='R'?`<div class="lec-ok">${lt}</div>`:v==='A'?`<div class="lec-ko">✖ ${lt}</div>${ratTag(g.id,e.id,d)}`:''}</td>`; }).join('');
         P+=Rr; const n=P+A, taux=n?Math.round(P/n*100):null;
         rows += `<tr data-g="${g.id}"><td class="idx">${i+1}</td>${F_PT.edit?`<td class="nm2 ${stCls(e)}" style="white-space:nowrap"><input class="ein" style="width:150px;font-weight:600" value="${h(e.nom)}" onchange="elv('${e.id}').nom=this.value.trim();toast('Enregistré ✔')"> <button class="mini" title="Déplacer / modifier" onclick="editInGroup('${e.id}')">🔀</button>${e.groupe!==g.id?`<button class="mini" title="Retirer de ce groupe (reste dans son groupe principal)" onclick="rmExtra('${e.id}','${g.id}')">✖</button>`:`<button class="mini" title="A quitté le club" onclick="setStatutPres('${e.id}',QUIT)">🚪</button>`}${isAdmin()?`<button class="mini r" title="Supprimer définitivement" onclick="delEleveDef('${e.id}')">🗑</button>`:''}</td>`
-          :`<td class="nm2 ${stCls(e)}" onclick="${isAdmin()?`editInGroup('${e.id}')`:`editEleve('${e.id}')`}" title="Modifier / déplacer / retirer">${h(e.nom)} <span class="nmed">✏️</span></td>`}<td class="c">${F_PT.edit?`<input class="ein" type="number" min="3" max="20" style="width:52px" value="${ageOf(e)||''}" onchange="const x=elv('${e.id}'); if(!x.naissance){x.age=+this.value||'';} toast('Enregistré ✔')">`:(ageOf(e)||'')}</td>
+          :`<td class="nm2 ${stCls(e)}" onclick="${isAdmin()?`editInGroup('${e.id}','${g.id}')`:`editEleve('${e.id}')`}" title="Modifier / déplacer / retirer">${h(e.nom)} <span class="nmed">✏️</span></td>`}<td class="c">${F_PT.edit?`<input class="ein" type="number" min="3" max="20" style="width:52px" value="${ageOf(e)||''}" onchange="const x=elv('${e.id}'); if(!x.naissance){x.age=+this.value||'';} toast('Enregistré ✔')">`:(ageOf(e)||'')}</td>
           <td class="sel fcol"><select title="Formateur de l'élève dans ce groupe" onchange="setEForm('${e.id}','${g.id}',this.value)"><option value="">—</option>${FORMS().map(u=>`<option value="${u.id}" ${eForm(e,g.id)===u.id?'selected':''}>${h(u.nom)}</option>`).join('')}${isAdmin()?'<option value="__add">➕ Ajouter un formateur…</option><option value="__gerer">🗑 Supprimer / gérer les formateurs…</option>':''}</select></td>
           <td class="sel"><select onchange="setF('${e.id}','niveau',this.value||'À préciser')"><option value=""></option>${NIVEAUX.map(n=>`<option ${e.niveau===n?'selected':''}>${n}</option>`).join('')}</select></td>
           ${g.compet?`<td class="sel st-comp" style="padding:0 8px;font-weight:600">compétiteurs</td>`:`<td class="sel ${stCls(e)}"><select onchange="setStatutPres('${e.id}',this.value)"><option value=""></option>${STATUTS_PRES.map(n=>`<option ${e.ancien===n?'selected':''}>${n}</option>`).join('')}</select></td>`}
@@ -1937,15 +1937,16 @@ function addToGroup(gid){
       tel1:fd.tel1, tel2:'', parent:'', email:'', naissance:fd.naissance, age:'', type:'', mode:'', tarif:100, insc:50, duT1:null, rq:'', notes:''});
   });
 }
-function editInGroup(id){
-  const e=elv(id);
+function editInGroup(id,gid){
+  const e=elv(id); const ex = gid && e.groupe!==gid && (e.extra||[]).includes(gid);
   formModal('✏️ '+e.nom, [
     {k:'nom',label:'Nom et Prénom',full:1,req:1},
     {k:'groupe',label:'Groupe',type:'select',full:1,options:sortGroups(S.groupes).map(g=>[g.id,gName(g)])},
     {k:'niveau',label:'Niveau',type:'select',options:['À préciser',...NIVEAUX]},
     {k:'statut',label:'Situation',type:'select',options:[['Actif','Actif'],[ESSAI,"Séance d'essai"],['En pause','En pause'],['Abandon','Abandon (retirer de la feuille)']]},
   ], e, fd => { Object.assign(e, fd, {jour:grp(fd.groupe).jour}); if(fd.statut==='Abandon') toast(e.nom+' retiré de la feuille (gardé dans Élèves)'); },
-  `<button type="button" class="btn g" style="margin-right:auto" onclick="closeModal();ficheEleve('${id}')">Fiche complète</button>`);
+  `<button type="button" class="btn g" style="margin-right:auto" onclick="closeModal();ficheEleve('${id}')">Fiche complète</button>`
+  + (ex?`<button type="button" class="btn r" onclick="if(confirm('Retirer ${js(h(e.nom))} du groupe ${js(h(gName(grp(gid))))} ? (il reste dans son groupe principal)')){closeModal();rmExtra('${id}','${gid}');}">🚪 Retirer de ce groupe</button>`:''));
 }
 function setStatutPres(id, v){
   const e = elv(id);
