@@ -141,7 +141,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:now
 .ftable th.today{background:var(--orange)}
 .ftable td{border:1px solid var(--line);padding:4px 6px;white-space:nowrap}
 .ftable td.c{text-align:center}
-.ftable tr.frow td{background:#eef4ff}.ftable .fbtn{border:1px solid #c7d2e3;background:#fff;color:#1d4ed8;font-weight:700;font-size:11px;border-radius:4px;padding:1px 4px;cursor:pointer;min-width:40px;line-height:1.25}.ftable td.fsel{padding:1px 2px}.ftable td.fsel select{font-size:11px;padding:1px 2px;max-width:76px;border:1px solid #c7d2e3;border-radius:4px;background:#fff;color:#1d4ed8;font-weight:700}
+.ftable tr.frow td{background:#eef4ff}.ftable .fini{display:inline-block;margin-left:2px;font-size:9px;font-weight:800;color:#fff;background:#1d4ed8;border-radius:3px;padding:0 3px;vertical-align:middle}.ftable .fbtn{border:1px solid #c7d2e3;background:#fff;color:#1d4ed8;font-weight:700;font-size:11px;border-radius:4px;padding:1px 4px;cursor:pointer;min-width:40px;line-height:1.25}.ftable td.fsel{padding:1px 2px}.ftable td.fsel select{font-size:11px;padding:1px 2px;max-width:76px;border:1px solid #c7d2e3;border-radius:4px;background:#fff;color:#1d4ed8;font-weight:700}
 .ftable td.nm2{font-weight:600;cursor:pointer}.ftable td.nm2:hover{color:var(--blue)}
 .ftable tr.grp td{background:#ef7f2d;color:#fff;font-weight:700;border-color:#ef7f2d}
 .ftable tr.grp td.lec{background:#f6a96e;text-align:center;cursor:pointer;font-weight:400}
@@ -448,14 +448,22 @@ const usr = id => S.users.find(u=>u.id===id) || {nom:'—'};
 const FORMS = () => S.users.filter(u=>u.role==='formateur');
 /** formateur qui a fait la séance : choisi, sinon celui qui a pointé (si formateur), sinon le formateur du groupe */
 function seForm(s,g){ if(!s) return ''; if(s.form) return s.form; const u=S.users.find(x=>x.id===s.par); if(u&&u.role==='formateur') return u.id; return (g||grp(s.groupe)).formateur||''; }
-function seForms(s,g){ if(!s) return []; if(Array.isArray(s.forms)&&s.forms.length) return s.forms; const f=seForm(s,g); return f?[f]:[]; }
+function seForms(s,g){ if(!s) return []; if(s.pf&&Object.values(s.pf).some(Boolean)) return [...new Set(Object.values(s.pf).filter(Boolean))]; if(Array.isArray(s.forms)&&s.forms.length) return s.forms; const f=seForm(s,g); return f?[f]:[]; }
+function stuForm(s,eid,g){ if(!s) return ''; if(s.pf&&s.pf[eid]) return s.pf[eid]; if(s.pf&&Object.values(s.pf).some(Boolean)) return ''; const f=seForms(s,g); return f.length===1?f[0]:''; }
+const fIni = id => h(((usr(id).nom||'?').trim()[0]||'?').toUpperCase());
 const fNames = arr => arr.map(id=>usr(id).nom||'?').join(' + ');
-function seFormPick(gid,d){ const s=S.seances.find(x=>x.groupe===gid&&x.date===d), cur=seForms(s,grp(gid));
-  openModal(mHead('👤 Formateurs de la séance – '+h(gLabel(grp(gid)))+' · '+fmtD(d)) + `<div class="small muted" style="margin-bottom:8px">Cochez un ou plusieurs formateurs (groupe partagé entre 2 ou 3 formateurs).</div>
-    ${FORMS().map(u=>`<label style="display:flex;gap:8px;align-items:center;padding:6px 0;font-size:15px"><input type="checkbox" class="sfp" value="${u.id}" ${cur.includes(u.id)?'checked':''}> ${h(u.nom)}</label>`).join('')}
-    <div class="mfoot"><button class="btn g" onclick="closeModal()">Annuler</button><button class="btn" onclick="setSeForms('${gid}','${d}',[...document.querySelectorAll('.sfp:checked')].map(x=>x.value));closeModal()">Enregistrer</button></div>`); }
+function seFormPick(gid,d){ const g=grp(gid), s=S.seances.find(x=>x.groupe===gid&&x.date===d);
+  const el=S.eleves.filter(e=>e.groupe===gid && (e.statut==='Actif'||e.statut===ESSAI||(s&&s.presences[e.id])));
+  window._PF={}; el.forEach(e=>_PF[e.id]=stuForm(s,e.id,g));
+  openModal(mHead('👤 Formateur de chaque élève – '+h(gLabel(g))+' · '+fmtD(d)) + `<div class="small muted" style="margin-bottom:8px">Le groupe peut être partagé : choisissez avec quel formateur chaque élève a travaillé.</div>
+    <div class="toolbar" style="margin-bottom:6px"><span class="small muted">Tous avec :</span>${FORMS().map(u=>`<button class="btn sm g" onclick="document.querySelectorAll('.pfs').forEach(x=>{x.value='${u.id}';_PF[x.dataset.e]='${u.id}'})">${h(u.nom)}</button>`).join('')}</div>
+    ${el.map(e=>`<div class="pt-row"><span class="nm">${h(e.nom)}${s&&s.presences[e.id]==='A'?' <span class="small" style="color:var(--bad)">(absent)</span>':''}</span><select class="pfs" data-e="${e.id}" onchange="_PF['${e.id}']=this.value" style="font-weight:700"><option value="">—</option>${FORMS().map(u=>`<option value="${u.id}" ${_PF[e.id]===u.id?'selected':''}>${h(u.nom)}</option>`).join('')}</select></div>`).join('')||'<div class="empty">Aucun élève dans ce groupe.</div>'}
+    <div class="mfoot"><button class="btn g" onclick="closeModal()">Annuler</button><button class="btn" onclick="setSePF('${gid}','${d}',_PF);closeModal()">Enregistrer</button></div>`); }
+function setSePF(gid,d,pf){ pf=Object.fromEntries(Object.entries(pf).filter(([k,v])=>v)); const arr=[...new Set(Object.values(pf))];
+  let s=S.seances.find(x=>x.groupe===gid&&x.date===d); if(!s){ if(!arr.length) return; s={id:uid('s'), groupe:gid, date:d, lecon:'', notes:'', presences:{}, par:S.session.id}; S.seances.push(s); }
+  s.pf=pf; s.forms=arr; s.form=arr[0]||''; if(!arr.length && !Object.keys(s.presences).length && !s.lecon) S.seances=S.seances.filter(x=>x!==s); _C.si=null; P._k=''; render(); toast(arr.length?'Formateur(s) : '+fNames(arr)+' ✔':'Formateur retiré'); }
 function setSeForms(gid,d,arr){ let s=S.seances.find(x=>x.groupe===gid&&x.date===d); if(!s){ if(!arr.length) return; s={id:uid('s'), groupe:gid, date:d, lecon:'', notes:'', presences:{}, par:S.session.id}; S.seances.push(s); }
-  s.forms=arr; s.form=arr[0]||''; if(!arr.length && !Object.keys(s.presences).length && !s.lecon) S.seances=S.seances.filter(x=>x!==s); _C.si=null; P._k=''; render(); toast(arr.length?'Formateur(s) : '+fNames(arr)+' ✔':'Formateur retiré'); }
+  s.pf={}; s.forms=arr; s.form=arr[0]||''; if(!arr.length && !Object.keys(s.presences).length && !s.lecon) S.seances=S.seances.filter(x=>x!==s); _C.si=null; P._k=''; render(); toast(arr.length?'Formateur(s) : '+fNames(arr)+' ✔':'Formateur retiré'); }
 function setSeForm(gid,d,v){ let s=S.seances.find(x=>x.groupe===gid&&x.date===d); if(!s){ if(!v) return; s={id:uid('s'), groupe:gid, date:d, lecon:'', notes:'', presences:{}, par:S.session.id}; S.seances.push(s); }
   s.form=v; if(!v && !Object.keys(s.presences).length && !s.lecon) S.seances=S.seances.filter(x=>x!==s); _C.si=null; P._k=''; render(); toast(v?'Formateur : '+usr(v).nom+' ✔':'Formateur retiré'); }
 const elv = id => S.eleves.find(e=>e.id===id);
@@ -1763,7 +1771,8 @@ const P = {groupe:'', date:TODAY, lecon:'', notes:'', pres:{}};
 function loadSeance(){
   const s = S.seances.find(x=>x.groupe===P.groupe && x.date===P.date);
   P.existing = s || null; P.lecon = s ? s.lecon : ''; P.notes = s ? s.notes : ''; P.pres = s ? {...s.presences} : {};
-  P.forms = s ? [...seForms(s)] : (S.session.role==='formateur' ? [S.session.id] : (grp(P.groupe).formateur?[grp(P.groupe).formateur]:[]));
+  { const df = S.session.role==='formateur' ? S.session.id : (grp(P.groupe).formateur||''); P.pf={};
+    S.eleves.filter(e=>e.groupe===P.groupe).forEach(e=>{ const f=s?stuForm(s,e.id):''; P.pf[e.id]=f||(s&&seForms(s).length>1?'':df); }); }
   S.eleves.filter(e=>e.groupe===P.groupe && (e.statut==='Actif'||e.statut===ESSAI)).forEach(e=>{ if(!P.pres[e.id]) P.pres[e.id]='P'; });
 }
 function leconsFor(g){
@@ -1791,8 +1800,8 @@ VIEWS.presences = () => {
       ${P.existing?badge('Séance enregistrée – modification','b-info'):badge('Nouvelle séance','b-warn')}
       ${jourOf(P.date)!==g.jour?badge('⚠ Ce groupe a cours le '+g.jour,'b-bad'):''}${ferieOf(P.date)?badge('🏖 '+ferieOf(P.date).label,'b-mut'):''}
     </div>
-    <label class="small muted" style="font-weight:600">👤 Formateur(s) qui ont fait la séance (un ou plusieurs)</label>
-    <div class="toolbar" style="margin-top:4px;gap:14px">${FORMS().map(u=>`<label style="display:flex;gap:6px;align-items:center;font-weight:700"><input type="checkbox" ${P.forms.includes(u.id)?'checked':''} onchange="P.forms=this.checked?[...new Set([...P.forms,'${u.id}'])]:P.forms.filter(x=>x!=='${u.id}')"> ${h(u.nom)}</label>`).join('')}</div>
+    <label class="small muted" style="font-weight:600">👤 Formateur de chaque élève (groupe partagé possible)</label>
+    <div class="toolbar" style="margin-top:4px"><span class="small muted">Tous avec :</span>${FORMS().map(u=>`<button class="btn sm g" onclick="Object.keys(P.pf).forEach(k=>P.pf[k]='${u.id}');render()">${h(u.nom)}</button>`).join('')}</div>
     <label class="small muted" style="font-weight:600">Contenu de la séance (leçon)</label>
     <div class="toolbar" style="margin-top:4px">
       <select id="lec" style="flex:1" onchange="P.lecon=this.value==='__autre'?'':this.value;document.getElementById('lecAutre').style.display=this.value==='__autre'?'block':'none'">
@@ -1802,6 +1811,7 @@ VIEWS.presences = () => {
     <div class="toolbar"><span class="small muted">${el.length} élèves · <b style="color:var(--green)">${cnt.P} P</b> · <b style="color:var(--orange)">${cnt.R} R</b> · <b style="color:var(--bad)">${cnt.A} A</b></span><span class="sp"></span>
       <button class="btn sm g" onclick="allPres('P')">Tous présents</button></div>
     ${el.map(e=>`<div class="pt-row"><span class="nm">${h(e.nom)}</span>
+      <select title="Formateur" style="font-weight:700;max-width:110px" onchange="P.pf['${e.id}']=this.value"><option value="">👤 —</option>${FORMS().map(u=>`<option value="${u.id}" ${P.pf[e.id]===u.id?'selected':''}>${h(u.nom)}</option>`).join('')}</select>
       <div class="seg">${['P','R','A'].map(k=>`<button class="${k} ${P.pres[e.id]===k?'on':''}" onclick="P.pres['${e.id}']='${k}';render()">${({P:'Présent',R:'Retard',A:'Absent'})[k]}</button>`).join('')}</div></div>`).join('') || '<div class="empty">Aucun élève actif dans ce groupe.</div>'}
     <textarea placeholder="Remarques sur la séance (optionnel)" style="width:100%;margin-top:12px" rows="2" oninput="P.notes=this.value">${h(P.notes)}</textarea>
     <div class="mfoot">${P.existing && canEdit()?`<button class="btn r" onclick="delSeance()">Supprimer la séance</button>`:''}<button class="btn o" onclick="saveSeance()">💾 Enregistrer le pointage</button></div>
@@ -1814,9 +1824,10 @@ VIEWS.presences = () => {
 function allPres(k){ Object.keys(P.pres).forEach(id=>P.pres[id]=k); render(); }
 function saveSeance(){
   if(!P.lecon) return toast('Choisissez la leçon de la séance');
-  if(!P.forms||!P.forms.length) return toast('Cochez le ou les formateurs qui ont fait la séance');
-  if(P.existing) Object.assign(P.existing, {lecon:P.lecon, notes:P.notes, presences:{...P.pres}, forms:[...P.forms], form:P.forms[0], modifiePar:S.session.id});
-  else S.seances.push({id:uid('s'), groupe:P.groupe, date:P.date, lecon:P.lecon, notes:P.notes, presences:{...P.pres}, forms:[...P.forms], form:P.forms[0], par:S.session.id});
+  const pf=Object.fromEntries(Object.entries(P.pf).filter(([k,v])=>v&&P.pres[k])); P.forms=[...new Set(Object.values(pf))];
+  if(!P.forms.length) return toast('Choisissez le formateur des élèves');
+  if(P.existing) Object.assign(P.existing, {lecon:P.lecon, notes:P.notes, presences:{...P.pres}, pf, forms:[...P.forms], form:P.forms[0], modifiePar:S.session.id});
+  else S.seances.push({id:uid('s'), groupe:P.groupe, date:P.date, lecon:P.lecon, notes:P.notes, presences:{...P.pres}, pf, forms:[...P.forms], form:P.forms[0], par:S.session.id});
   P._k=''; render(); toast('Pointage enregistré ✔');
 }
 function delSeance(){ if(!confirm('Supprimer cette séance ?')) return; S.seances=S.seances.filter(s=>s!==P.existing); P._k=''; render(); toast('Séance supprimée'); }
@@ -1856,13 +1867,13 @@ VIEWS.feuille = () => {
         ${dates.map(d=>ferieOf(d)?`<td class="fer"></td>`:'<td></td>').join('')}<td colspan="3"></td></tr>`;
       { const fc={}; dates.forEach(d=>{ const s=seanceOf(g.id,d); if(s) seForms(s,g).forEach(f=>fc[f]=(fc[f]||0)+1); });
         rows += `<tr class="frow"><td></td><td colspan="4" class="small"><b>👤 Formateur(s) de la séance</b>${Object.keys(fc).length?' · '+Object.entries(fc).map(([f,n])=>`${h(usr(f).nom)} : <b>${n}</b>`).join(' · '):''}</td>
-        ${dates.map(d=>{ const s=seanceOf(g.id,d), fs=s?seForms(s,g):[]; return `<td class="c fsel ${ferieOf(d)&&!s?'fer':''}"><button class="fbtn" title="Formateur(s) de la séance – cliquer pour choisir" onclick="seFormPick('${g.id}','${d}')">${fs.length?fs.map(id=>h((usr(id).nom||'?').split(' ')[0])).join('<br>'):'＋'}</button></td>`; }).join('')}<td colspan="3"></td></tr>`; }
+        ${dates.map(d=>{ const s=seanceOf(g.id,d), fs=s?seForms(s,g):[]; return `<td class="c fsel ${ferieOf(d)&&!s?'fer':''}"><button class="fbtn" title="Formateur(s) de la séance – cliquer pour choisir" onclick="seFormPick('${g.id}','${d}')">${fs.length?fs.map(id=>h((usr(id).nom||'?').split(' ')[0])+(s.pf&&fs.length>1?' ('+Object.values(s.pf).filter(x=>x===id).length+')':'')).join('<br>'):'＋'}</button></td>`; }).join('')}<td colspan="3"></td></tr>`; }
       el.forEach((e,i)=>{
         let P=0,A=0,Rr=0;
         const cells = dates.map(d=>{ const fer=ferieOf(d); const v=presOf(g.id,e.id,d); if(v==='P')P++; else if(v==='A')A++; else if(v==='R')Rr++;
           const lp=leconPrevue(e.niveau,g.jour,d);
           const lt = lp ? 'S'+lp.n+' · '+h(lp.t) : (e.niveau&&e.niveau!=='À préciser' ? '—' : 'niveau ?');
-          return `<td class="pc ${v} ${d===TODAY?'today':''} ${fer&&!v?'ferc':''}" data-d="${d}" title="${fer?h(fer.label)+' – vous pouvez quand même noter la présence':(lp?h('S'+lp.n+' · '+lp.t):lt)}${v&&seForms(seanceOf(g.id,d),g).length?' – formateur(s) : '+h(fNames(seForms(seanceOf(g.id,d),g))):''}"><select onchange="setPres('${g.id}','${e.id}','${d}',this.value,this)"><option value=""></option><option ${v==='P'?'selected':''}>P</option><option ${v==='A'?'selected':''}>A</option>${v==='R'?'<option selected>R</option>':''}</select>${v==='P'||v==='R'?`<div class="lec-ok">${lt}</div>`:v==='A'?`<div class="lec-ko">✖ ${lt}</div>${ratTag(g.id,e.id,d)}`:''}</td>`; }).join('');
+          return `<td class="pc ${v} ${d===TODAY?'today':''} ${fer&&!v?'ferc':''}" data-d="${d}" title="${fer?h(fer.label)+' – vous pouvez quand même noter la présence':(lp?h('S'+lp.n+' · '+lp.t):lt)}${v&&stuForm(seanceOf(g.id,d),e.id,g)?' – formateur : '+h(usr(stuForm(seanceOf(g.id,d),e.id,g)).nom):''}"><select onchange="setPres('${g.id}','${e.id}','${d}',this.value,this)"><option value=""></option><option ${v==='P'?'selected':''}>P</option><option ${v==='A'?'selected':''}>A</option>${v==='R'?'<option selected>R</option>':''}</select>${(v==='P'||v==='R')&&seForms(seanceOf(g.id,d),g).length>1&&stuForm(seanceOf(g.id,d),e.id,g)?`<span class="fini">${fIni(stuForm(seanceOf(g.id,d),e.id,g))}</span>`:''}${v==='P'||v==='R'?`<div class="lec-ok">${lt}</div>`:v==='A'?`<div class="lec-ko">✖ ${lt}</div>${ratTag(g.id,e.id,d)}`:''}</td>`; }).join('');
         P+=Rr; const n=P+A, taux=n?Math.round(P/n*100):null;
         rows += `<tr data-g="${g.id}"><td class="idx">${i+1}</td>${F_PT.edit?`<td class="nm2 ${stCls(e)}" style="white-space:nowrap"><input class="ein" style="width:150px;font-weight:600" value="${h(e.nom)}" onchange="elv('${e.id}').nom=this.value.trim();toast('Enregistré ✔')"> <button class="mini" title="Déplacer / modifier" onclick="editInGroup('${e.id}')">🔀</button>${e.groupe!==g.id?`<button class="mini" title="Retirer de ce groupe (reste dans son groupe principal)" onclick="rmExtra('${e.id}','${g.id}')">✖</button>`:`<button class="mini" title="A quitté le club" onclick="setStatutPres('${e.id}',QUIT)">🚪</button>`}${isAdmin()?`<button class="mini r" title="Supprimer définitivement" onclick="delEleveDef('${e.id}')">🗑</button>`:''}</td>`
           :`<td class="nm2 ${stCls(e)}" onclick="${isAdmin()?`editInGroup('${e.id}')`:`editEleve('${e.id}')`}" title="Modifier / déplacer / retirer">${h(e.nom)} <span class="nmed">✏️</span></td>`}<td class="c">${F_PT.edit?`<input class="ein" type="number" min="3" max="20" style="width:52px" value="${ageOf(e)||''}" onchange="const x=elv('${e.id}'); if(!x.naissance){x.age=+this.value||'';} toast('Enregistré ✔')">`:(ageOf(e)||'')}</td>
