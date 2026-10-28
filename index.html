@@ -1268,7 +1268,12 @@ VIEWS.caisse = () => {
   const row = (c) => `<tr><td>${fmtD(c.date)}</td><td>${h(c.libelle)}${c.cat&&!c.auto?`<div class="small muted">${h(c.cat)}</div>`:''}</td><td class="num"><b>${dt(c.montant)}</b></td><td class="small">${h(c.rq||'')}</td>
     <td style="white-space:nowrap">${c.auto?'<span class="small muted">auto</span>':`<button class="btn sm g" onclick="mvt('${c.sens}','${c.id}')">✏️</button> <button class="btn sm r" onclick="del('caisse','${c.id}','ce mouvement')">🗑</button>`}</td></tr>`;
   const byCat = {}; depL.forEach(c=>byCat[c.cat]=(byCat[c.cat]||0)+c.montant); const maxC=Math.max(1,...Object.values(byCat));
-  return `<div class="toolbar">${sel}<label class="small" style="display:flex;gap:6px;align-items:center;margin-left:8px"><input type="checkbox" ${F_C.detail?'checked':''} onchange="F_C.detail=this.checked;render()"> Détail par élève</label>
+  const dups = isAdmin()? dupPairs([...manIn,...manOut]) : [];
+  const dupBox = dups.length?`<div class="alert warn" style="display:block"><b>⚠ ${dups.length} doublon(s) possible(s)</b> : même montant, à quelques jours d'intervalle, même sujet. Une dépense comptée 2 fois fausse le solde de la caisse.
+    ${dups.map(([a,b])=>`<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px;padding:6px;background:#fff;border-radius:8px">
+      ${[a,b].map(x=>`<span style="flex:1;min-width:230px"><b>${fmtD(x.date)}</b> · ${h(x.libelle)} · <b>${dt(x.montant)}</b>${x.refCharge?' <span class="small muted">(Charges)</span>':''} <button class="btn sm r" onclick="dupDel('${x.id}','${(x===a?b:a).id}')">🗑 Supprimer celui-ci</button></span>`).join('')}
+      <button class="btn sm g" onclick="dupNot('${a.id}','${b.id}')">Ce n'est pas un doublon</button></div>`).join('')}</div>`:'';
+  return dupBox + `<div class="toolbar">${sel}<label class="small" style="display:flex;gap:6px;align-items:center;margin-left:8px"><input type="checkbox" ${F_C.detail?'checked':''} onchange="F_C.detail=this.checked;render()"> Détail par élève</label>
     <span class="sp"></span><button class="btn g" onclick="mvt('in')">+ Recette</button><button class="btn" onclick="mvt('out')">+ Dépense</button></div>
   <div class="grid kpis">
     <div class="kpi g"><div class="l">Recettes</div><div class="v">${dt(sc.rin)}</div>${recDetail(recL)}</div>
@@ -1317,6 +1322,18 @@ function recSections(L,row){
   const keys=Object.keys(G).sort((a,b)=>{ const i=ORD.indexOf(a), j=ORD.indexOf(b); return (i<0?99:i)-(j<0?99:j) || a.localeCompare(b); });
   return keys.map(k=>`<tr><td colspan="5" style="background:#e8f5ee;font-weight:700;color:#156b3a">${h(k)}</td></tr>${G[k].map(row).join('')}<tr><td></td><td class="small" style="text-align:right"><b>Sous-total ${h(k)}</b></td><td class="num"><b>${dt(sum(G[k],r=>+r.montant||0))}</b></td><td colspan="2"></td></tr>`).join('');
 }
+/* ---- doublons de dépenses (même montant, dates proches, même sujet) ---- */
+const DUP_STOP = new Set(['mois','salaire','frais','caisse','retrait','facture','factures','achat','janvier','fevrier','mars','avril','juin','juillet','aout','septembre','octobre','novembre','decembre','2026','2027','pour','avec','depense','autre','paiement']);
+const dupWords = l => new Set(String(l||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').split(/[^a-z0-9]+/).filter(w=>w.length>=4&&!DUP_STOP.has(w)));
+const dDiff = (a,b) => Math.abs((new Date(a)-new Date(b))/864e5);
+function dupMatch(a,b){ if(a===b||a.sens!==b.sens||a.compte!==b.compte) return false; if(Math.abs((+a.montant||0)-(+b.montant||0))>0.001) return false; if(dDiff(a.date,b.date)>20) return false;
+  if(a.refCharge&&b.refCharge) return a.refCharge===b.refCharge&&a.chMois===b.chMois; if((a.ok||[]).includes(b.id)||(b.ok||[]).includes(a.id)) return false;
+  if(a.cat&&a.cat===b.cat) return true; const A=dupWords(a.libelle); return [...dupWords(b.libelle)].some(w=>A.has(w)); }
+function dupPairs(L){ const out=[]; for(let i=0;i<L.length;i++) for(let j=i+1;j<L.length;j++) if(dupMatch(L[i],L[j])) out.push([L[i],L[j]]); return out; }
+function dupNot(a,b){ const A=S.caisse.find(x=>x.id===a), B=S.caisse.find(x=>x.id===b); A.ok=[...(A.ok||[]),b]; B.ok=[...(B.ok||[]),a]; render(); toast('OK, ce ne sont pas des doublons'); }
+function dupDel(id,oid){ const c=S.caisse.find(x=>x.id===id); if(!confirm(`Supprimer ce doublon ?\n${fmtD(c.date)} · ${c.libelle} · ${dt(c.montant)}`)) return;
+  const other=S.caisse.find(x=>x.id===oid); if(c.refCharge&&other&&!other.refCharge){ other.refCharge=c.refCharge; other.chMois=c.chMois; }   // on garde le lien avec la charge
+  S.caisse=S.caisse.filter(x=>x!==c); render(); toast('Doublon supprimé ✔'); }
 function mvt(sens, id){
   const c0 = id ? S.caisse.find(x=>x.id===id) : null;
   const compte = c0 ? c0.compte : F_C.tab==='projet'?'projet':F_C.tab==='competition'?'competition':F_C.tab==='masterclass'?'masterclass':'academie';
@@ -1325,7 +1342,8 @@ function mvt(sens, id){
   formModal((id?'Modifier – ':'')+(sens==='in'?'Recette':'Dépense'), [
     {k:'date',label:'Date',type:'date',req:1},{k:'cat',label:'Catégorie',type:'select',options:[...(sens==='in'?CAT_IN:compte==='competition'?CAT_COMP:CAT_OUT),['__new','➕ Ajouter une catégorie…']]},
     {k:'libelle',label:'Libellé',full:1,req:1},{k:'montant',label:'Montant (DT)',type:'number',req:1},{k:'mode',label:'Payé en',type:'select',options:MODES},{k:'rq',label:'RQ (remarque)'},
-  ], {...c, mode:c.mode||payMode(c)}, fd => { fd.montant=+fd.montant; if(!(fd.montant>0)){toast('Montant invalide');return false;} if(id) Object.assign(c,fd); else S.caisse.push({id:uid('c'), sens, compte, ...fd}); });
+  ], {...c, mode:c.mode||payMode(c)}, fd => { fd.montant=+fd.montant; if(!(fd.montant>0)){toast('Montant invalide');return false;} if(id) Object.assign(c,fd); else { const nw={id:uid('c'), sens, compte, ...fd}; const d=S.caisse.find(x=>dupMatch(x,nw));
+      if(d && !confirm(`⚠ Cette ${sens==='in'?'recette':'dépense'} existe peut-être déjà dans la caisse :\n${fmtD(d.date)} · ${d.libelle} · ${dt(d.montant)}\n\nOK = l'ajouter quand même · Annuler = ne pas l'ajouter`)) return; S.caisse.push(nw); } });
   catNewHook(sens==='in'?'CAT_IN':compte==='competition'?'CAT_COMP':'CAT_OUT', c.cat);
 }
 function catNewHook(lk, cur){ const sel=document.querySelector('#mform select[name=cat]'); if(!sel) return; let prev=sel.value;
@@ -1395,7 +1413,11 @@ function chPay(id){
     {k:'rq',label:'Comment ? (espèces, chèque n°…)',full:1}], v,
   fd => { fd.montant=+fd.montant; if(!(fd.montant>0)){toast('Montant invalide');return false;}
     const lib=`${c.lib} – ${chLabel(sm).toLowerCase()}`;
-    if(p) Object.assign(p,fd,{libelle:lib}); else S.caisse.push({id:uid('c'), sens:'out', compte:'academie', cat:c.cat||'Autre dépense', libelle:lib, refCharge:c.id, chMois:sm, ...fd}); });
+    if(p) return void Object.assign(p,fd,{libelle:lib});
+    const nw={id:uid('c'), sens:'out', compte:'academie', cat:c.cat||'Autre dépense', libelle:lib, refCharge:c.id, chMois:sm, ...fd};
+    const ex=S.caisse.find(x=>!x.refCharge&&x.sens==='out'&&x.compte==='academie'&&Math.abs((+x.montant||0)-fd.montant)<0.001&&dDiff(x.date,fd.date)<=25&&(x.cat===nw.cat||[...dupWords(c.lib)].some(w=>dupWords(x.libelle).has(w))));
+    if(ex && confirm(`Ce paiement est déjà dans la caisse :\n${fmtD(ex.date)} · ${ex.libelle} · ${dt(ex.montant)}\n\nOK = c'est le même (on le relie, pas de doublon) · Annuler = c'est un autre paiement`)){ ex.refCharge=c.id; ex.chMois=sm; toast('Relié à la dépense existante ✔ (pas de doublon)'); return; }
+    S.caisse.push(nw); });
 }
 function chUnpay(id){ const c=CHG().find(x=>x.id===id), p=chPaid(c,F_CH.mois); if(!p||!confirm('Annuler ce paiement ? (il sera retiré de la caisse)')) return; S.caisse=S.caisse.filter(x=>x!==p); render(); toast('Paiement annulé'); }
 
