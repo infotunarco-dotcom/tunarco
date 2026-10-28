@@ -1582,11 +1582,11 @@ VIEWS.eleves = () => {
     <select onchange="F_EL.jour=this.value;render()"><option value="">Tous les jours</option>${JOURS.map(j=>`<option ${F_EL.jour===j?'selected':''}>${j}</option>`).join('')}</select>
     <select onchange="F_EL.statut=this.value;render()">${['','Actif',"Séance d'essai",'En pause','Abandon'].map(s=>`<option value="${s}" ${F_EL.statut===s?'selected':''}>${s==='Abandon'?'A quitté le club':s||'Tous statuts'}</option>`).join('')}</select>
     <span class="small muted">${list.length} élève(s)</span><span class="sp"></span><button class="btn o" onclick="editEleve()">+ Nouvel élève</button></div>
-${(()=>{ const row=(e,i)=>{ const g=grp(e.groupe); const f=(k,t,w,ph)=>`<input class="ein" type="${t||'text'}" value="${h(e[k]||'')}" style="width:${w}px" placeholder="${ph||''}" onchange="setE('${e.id}','${k}',this.value)">`; return `<tr>
+${(()=>{ const row=(e,i)=>{ const g=grp(e.groupe); const f=(k,t,w,ph)=>`<input class="ein" type="${t||'text'}" value="${h(e[k]||'')}" style="width:${w}px" placeholder="${ph||''}" ${t==='date'?'min="1990-01-01" max="'+TODAY+'"':''} onchange="setE('${e.id}','${k}',this.value,this)">`; return `<tr>
       <td class="idx">${i+1}</td>
       <td>${f('nom','text',190)}${e.statut==='Abandon'?'<div class="small" style="color:#6b7280">a quitté le club</div>':''}</td>
       <td>${f('naissance','date',140)}</td>
-      <td class="c" style="white-space:nowrap"><b>${ageOf(e)?ageOf(e)+' ans':'—'}</b></td>
+      <td class="c agec" style="white-space:nowrap"><b>${ageOf(e)?ageOf(e)+' ans':'—'}</b></td>
       <td>${f('parent','text',150,'Nom du parent')}</td>
       <td>${f('tel1','tel',110,'Tél')}</td>
       <td>${f('tel2','tel',110,'Tél')}</td>
@@ -1620,7 +1620,10 @@ function elevesMC(){
 }
 function mcRmAll(eid){ const e=elv(eid); if(!confirm('Retirer '+e.nom+' de toutes les master class ?')) return; MC().forEach(m=>m.eleves=m.eleves.filter(x=>x!==eid)); if(e.statut==='Externe' && !S.competitions.some(c=>compParts(c).includes(eid)) && !S.tx.some(x=>x.eleve===eid)) S.eleves=S.eleves.filter(x=>x.id!==eid); render(); toast('Retiré ✔'); }
 function mcNewAdh(){ const L=MC(); if(!L.length) return toast('Créez d\'abord une master class'); const id=F_EL.mc||[...L].sort((a,b)=>a.debut.localeCompare(b.debut)).find(m=>m.fin>=TODAY)?.id||L[0].id; mcAddLine(id); }
-function setE(id,k,v){ const e=elv(id); e[k]=v.trim(); if(k==='naissance') render(); else toast('Enregistré ✔'); }
+function setE(id,k,v,el){ const e=elv(id); v=String(v||'').trim();
+  if(k==='naissance'){ const y=+v.slice(0,4); if(v && (y<1990 || y>new Date().getFullYear())) return;   // année en cours de saisie (ex : 0002) → on attend l'année complète
+    e.naissance=v; const c=el&&el.closest('tr')&&el.closest('tr').querySelector('.agec'); if(c) c.innerHTML='<b>'+(ageOf(e)?ageOf(e)+' ans':'—')+'</b>'; toast('Date de naissance enregistrée ✔'); return; }
+  e[k]=v; toast('Enregistré ✔'); }
 function editEleve(id){
   const e = id ? elv(id) : {statut:'Actif', tarif:100, insc:50, niveau:'À préciser', jour:'Samedi', type:'', mode:''};
   const gOpts = sortGroups(S.groupes).map(g=>[g.id, gName(g)]);
