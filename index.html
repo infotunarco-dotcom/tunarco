@@ -1268,12 +1268,16 @@ VIEWS.caisse = () => {
   const row = (c) => `<tr><td>${fmtD(c.date)}</td><td>${h(c.libelle)}${c.cat&&!c.auto?`<div class="small muted">${h(c.cat)}</div>`:''}</td><td class="num"><b>${dt(c.montant)}</b></td><td class="small">${h(c.rq||'')}</td>
     <td style="white-space:nowrap">${c.auto?'<span class="small muted">auto</span>':`<button class="btn sm g" onclick="mvt('${c.sens}','${c.id}')">✏️</button> <button class="btn sm r" onclick="del('caisse','${c.id}','ce mouvement')">🗑</button>`}</td></tr>`;
   const byCat = {}; depL.forEach(c=>byCat[c.cat]=(byCat[c.cat]||0)+c.montant); const maxC=Math.max(1,...Object.values(byCat));
+  const fromCh = isAdmin()&&compte==='academie' ? S.caisse.filter(x=>x.refCharge&&x.compte==='academie') : [];
+  const chBox = fromCh.length?`<div class="alert warn" style="display:block"><b>⚠ ${fromCh.length} dépense(s) ont été ajoutées dans la caisse par la page Charges</b> (${dt(sum(fromCh,x=>+x.montant||0))}) — avant, « Payer » dans Charges écrivait dans la caisse. Maintenant les Charges ne touchent plus la caisse.
+    <div class="small" style="margin:4px 0">${fromCh.map(x=>`${fmtD(x.date)} · ${h(x.libelle)} · <b>${dt(x.montant)}</b>`).join('<br>')}</div>
+    <button class="btn sm r" onclick="chOutAll()">🗑 Les retirer toutes de la caisse</button> <button class="btn sm g" onclick="chKeepAll()">Les garder comme mes dépenses</button></div>`:'';
   const dups = isAdmin()? dupPairs([...manIn,...manOut]) : [];
   const dupBox = dups.length?`<div class="alert warn" style="display:block"><b>⚠ ${dups.length} doublon(s) possible(s)</b> : même montant, à quelques jours d'intervalle, même sujet. Une dépense comptée 2 fois fausse le solde de la caisse.
     ${dups.map(([a,b])=>`<div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:6px;padding:6px;background:#fff;border-radius:8px">
       ${[a,b].map(x=>`<span style="flex:1;min-width:230px"><b>${fmtD(x.date)}</b> · ${h(x.libelle)} · <b>${dt(x.montant)}</b>${x.refCharge?' <span class="small muted">(Charges)</span>':''} <button class="btn sm r" onclick="dupDel('${x.id}','${(x===a?b:a).id}')">🗑 Supprimer celui-ci</button></span>`).join('')}
       <button class="btn sm g" onclick="dupNot('${a.id}','${b.id}')">Ce n'est pas un doublon</button></div>`).join('')}</div>`:'';
-  return dupBox + `<div class="toolbar">${sel}<label class="small" style="display:flex;gap:6px;align-items:center;margin-left:8px"><input type="checkbox" ${F_C.detail?'checked':''} onchange="F_C.detail=this.checked;render()"> Détail par élève</label>
+  return chBox + dupBox + `<div class="toolbar">${sel}<label class="small" style="display:flex;gap:6px;align-items:center;margin-left:8px"><input type="checkbox" ${F_C.detail?'checked':''} onchange="F_C.detail=this.checked;render()"> Détail par élève</label>
     <span class="sp"></span><button class="btn g" onclick="mvt('in')">+ Recette</button><button class="btn" onclick="mvt('out')">+ Dépense</button></div>
   <div class="grid kpis">
     <div class="kpi g"><div class="l">Recettes</div><div class="v">${dt(sc.rin)}</div>${recDetail(recL)}</div>
@@ -1327,13 +1331,14 @@ const DUP_STOP = new Set(['mois','salaire','frais','caisse','retrait','facture',
 const dupWords = l => new Set(String(l||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').split(/[^a-z0-9]+/).filter(w=>w.length>=4&&!DUP_STOP.has(w)));
 const dDiff = (a,b) => Math.abs((new Date(a)-new Date(b))/864e5);
 function dupMatch(a,b){ if(a===b||a.sens!==b.sens||a.compte!==b.compte) return false; if(Math.abs((+a.montant||0)-(+b.montant||0))>0.001) return false; if(dDiff(a.date,b.date)>20) return false;
-  if(a.refCharge&&b.refCharge) return a.refCharge===b.refCharge&&a.chMois===b.chMois; if((a.ok||[]).includes(b.id)||(b.ok||[]).includes(a.id)) return false;
+  if((a.ok||[]).includes(b.id)||(b.ok||[]).includes(a.id)) return false;
   if(a.cat&&a.cat===b.cat) return true; const A=dupWords(a.libelle); return [...dupWords(b.libelle)].some(w=>A.has(w)); }
 function dupPairs(L){ const out=[]; for(let i=0;i<L.length;i++) for(let j=i+1;j<L.length;j++) if(dupMatch(L[i],L[j])) out.push([L[i],L[j]]); return out; }
+function chOutAll(){ const L=S.caisse.filter(x=>x.refCharge&&x.compte==='academie'); if(!confirm(`Retirer de la caisse les ${L.length} dépenses créées par la page Charges (${dt(sum(L,x=>+x.montant||0))}) ?\nVos dépenses saisies à la main restent.`)) return; CHP(); S.caisse=S.caisse.filter(x=>!(x.refCharge&&x.compte==='academie')); render(); toast('Retirées de la caisse ✔'); }
+function chKeepAll(){ CHP(); S.caisse.forEach(x=>{ if(x.refCharge){ delete x.refCharge; delete x.chMois; } }); render(); toast('Gardées comme dépenses normales ✔'); }
 function dupNot(a,b){ const A=S.caisse.find(x=>x.id===a), B=S.caisse.find(x=>x.id===b); A.ok=[...(A.ok||[]),b]; B.ok=[...(B.ok||[]),a]; render(); toast('OK, ce ne sont pas des doublons'); }
 function dupDel(id,oid){ const c=S.caisse.find(x=>x.id===id); if(!confirm(`Supprimer ce doublon ?\n${fmtD(c.date)} · ${c.libelle} · ${dt(c.montant)}`)) return;
-  const other=S.caisse.find(x=>x.id===oid); if(c.refCharge&&other&&!other.refCharge){ other.refCharge=c.refCharge; other.chMois=c.chMois; }   // on garde le lien avec la charge
-  S.caisse=S.caisse.filter(x=>x!==c); render(); toast('Doublon supprimé ✔'); }
+    S.caisse=S.caisse.filter(x=>x!==c); render(); toast('Doublon supprimé ✔'); }
 function mvt(sens, id){
   const c0 = id ? S.caisse.find(x=>x.id===id) : null;
   const compte = c0 ? c0.compte : F_C.tab==='projet'?'projet':F_C.tab==='competition'?'competition':F_C.tab==='masterclass'?'masterclass':'academie';
@@ -1366,7 +1371,10 @@ const chDue = (c,ym) => c.actif!==0 && (c.freq!=='T' || String(c.mois||'').split
 const chPrev = ym => { let y=+ym.slice(0,4), m=+ym.slice(5,7)-1; if(!m){ m=12; y--; } return y+'-'+String(m).padStart(2,'0'); };
 const chDe = ym => { const l=chLabel(ym).toLowerCase(); return (/^[aeiouyàâéèêîôû]/.test(l)?"d'":'de ')+l; };
 const chSM = (c,ym) => c.decal ? chPrev(ym) : ym; // mois concerné (salaire : le mois d'avant)
-const chPaid = (c,ym) => S.caisse.find(x=>x.refCharge===c.id && x.chMois===chSM(c,ym));
+// Charges = seulement un suivi (ce que je dois payer par mois / trimestre). Elles n'écrivent RIEN dans la caisse :
+// les dépenses de la caisse sont saisies à la main dans « Caisse ».
+const CHP = () => { const T=TDEF(); if(!T.chPay){ T.chPay={}; S.caisse.filter(x=>x.refCharge).forEach(x=>{ T.chPay[x.refCharge+'|'+x.chMois]={date:x.date, montant:+x.montant||0, rq:x.rq||''}; }); } return T.chPay; };
+const chPaid = (c,ym) => CHP()[c.id+'|'+chSM(c,ym)] || null;
 VIEWS.charges = () => {
   const L=chMoisList(); if(!F_CH.mois) F_CH.mois = L.includes(TODAY.slice(0,7)) ? TODAY.slice(0,7) : L[0];
   const ym=F_CH.mois, all=CHG(), due=all.filter(c=>chDue(c,ym));
@@ -1376,8 +1384,8 @@ VIEWS.charges = () => {
     return `<tr style="${p?'background:#f3fbf6':''}"><td style="font-size:15px"><b>${h(c.lib)}</b>${c.freq==='T'?' <span class="small muted">(trimestre)</span>':''}${c.decal?`<div class="small" style="color:#1d4ed8;font-weight:700">Salaire ${chDe(chSM(c,ym))}</div>`:''}<div class="small muted">à payer le ${c.decal&&+c.jour===4?'3 ou 4 ':fmtD(ym+'-'+String(c.jour||15).padStart(2,'0'))}${c.decal&&+c.jour===4?chLabel(ym).toLowerCase():''}</div>${c.variable?'<div class="small" style="color:#8a5a00">Montant à vérifier</div>':''}</td>
       <td class="num" style="font-size:15px"><b>${dt(p?p.montant:+c.montant||0)}</b></td>
       <td>${p?`<span style="color:#156b3a;font-weight:700">✔ Payé le ${fmtD(p.date)}</span>`:`<span style="color:#b42318;font-weight:700">✖ Pas encore payé</span>`}</td>
-      <td style="white-space:nowrap;text-align:right">${p?`<button class="btn sm" onclick="chPay('${c.id}')">✏️ Date / montant</button> <button class="btn sm r" onclick="chUnpay('${c.id}')">Annuler</button>`:`<button class="btn" onclick="chPay('${c.id}')">💵 Payer</button>`} <button class="btn sm g" onclick="chEdit('${c.id}')">✏️ Modifier</button></td></tr>`; };
-  return `<div class="alert info small" style="display:block">👉 Choisissez le mois, puis cliquez sur <b>💵 Payer</b> quand vous payez une charge. Le montant passe tout seul dans la <b>caisse</b> (dépenses).</div>
+      <td style="white-space:nowrap;text-align:right">${p?`<button class="btn sm" onclick="chPay('${c.id}')">✏️ Date / montant</button> <button class="btn sm r" onclick="chUnpay('${c.id}')">Annuler</button>`:`<button class="btn" onclick="chPay('${c.id}')">💵 Payé</button>`} <button class="btn sm g" onclick="chEdit('${c.id}')">✏️ Modifier</button></td></tr>`; };
+  return `<div class="alert info small" style="display:block">👉 Cette page sert seulement à <b>savoir vos charges</b> du mois et du trimestre. Cliquez <b>💵 Payé</b> pour la cocher : <b>ça n'ajoute rien dans la caisse</b> (les dépenses de la caisse, vous les ajoutez vous-même dans 💰 Caisse).</div>
   <div class="toolbar"><b>Mois :</b> <select style="font-weight:700;min-width:200px;font-size:15px" onchange="F_CH.mois=this.value;render()">${L.map(m=>`<option value="${m}" ${m===ym?'selected':''}>${chLabel(m)}</option>`).join('')}</select>
     <span class="sp"></span><button class="btn g" onclick="chEdit()">+ Ajouter une charge</button></div>
   <div class="grid kpis">
@@ -1406,20 +1414,15 @@ function chEdit(id){
   c0?`<button type="button" class="btn r" style="margin-right:auto" onclick="if(confirm('Supprimer cette charge ? (les paiements déjà faits restent dans la caisse)')){TDEF().charges=CHG().filter(x=>x.id!=='${c0.id}');closeModal();render();}">Supprimer</button>`:'');
 }
 function chPay(id){
-  const c=CHG().find(x=>x.id===id), ym=F_CH.mois, p=chPaid(c,ym), sm=chSM(c,ym);
+  const c=CHG().find(x=>x.id===id), ym=F_CH.mois, p=chPaid(c,ym), sm=chSM(c,ym), key=c.id+'|'+sm;
   const v = p ? {date:p.date, montant:p.montant, rq:p.rq||''} : {date:TODAY.slice(0,7)===ym?TODAY:ym+'-'+String(c.jour||15).padStart(2,'0'), montant:c.montant, rq:''};
-  formModal(`${p?'Modifier le paiement':'Payer'} – ${c.lib} (${c.decal?'salaire '+chDe(sm):chLabel(sm).toLowerCase()})`, [
+  formModal(`${p?'Modifier':'Marquer payé'} – ${c.lib} (${c.decal?'salaire '+chDe(sm):chLabel(sm).toLowerCase()})`, [
     {k:'date',label:'Date du paiement',type:'date',req:1},{k:'montant',label:'Montant payé (DT)',type:'number',req:1},
-    {k:'rq',label:'Comment ? (espèces, chèque n°…)',full:1}], v,
-  fd => { fd.montant=+fd.montant; if(!(fd.montant>0)){toast('Montant invalide');return false;}
-    const lib=`${c.lib} – ${chLabel(sm).toLowerCase()}`;
-    if(p) return void Object.assign(p,fd,{libelle:lib});
-    const nw={id:uid('c'), sens:'out', compte:'academie', cat:c.cat||'Autre dépense', libelle:lib, refCharge:c.id, chMois:sm, ...fd};
-    const ex=S.caisse.find(x=>!x.refCharge&&x.sens==='out'&&x.compte==='academie'&&Math.abs((+x.montant||0)-fd.montant)<0.001&&dDiff(x.date,fd.date)<=25&&(x.cat===nw.cat||[...dupWords(c.lib)].some(w=>dupWords(x.libelle).has(w))));
-    if(ex && confirm(`Ce paiement est déjà dans la caisse :\n${fmtD(ex.date)} · ${ex.libelle} · ${dt(ex.montant)}\n\nOK = c'est le même (on le relie, pas de doublon) · Annuler = c'est un autre paiement`)){ ex.refCharge=c.id; ex.chMois=sm; toast('Relié à la dépense existante ✔ (pas de doublon)'); return; }
-    S.caisse.push(nw); });
+    {k:'rq',label:'Remarque (espèces, chèque n°…)',full:1}], v,
+  fd => { fd.montant=+fd.montant; if(!(fd.montant>0)){toast('Montant invalide');return false;} CHP()[key]={date:fd.date, montant:fd.montant, rq:fd.rq||''}; toast('Charge cochée payée ✔ (rien ajouté dans la caisse)'); },
+  `<div class="small muted" style="margin-right:auto;max-width:280px">ℹ️ N'ajoute rien dans la caisse.</div>`);
 }
-function chUnpay(id){ const c=CHG().find(x=>x.id===id), p=chPaid(c,F_CH.mois); if(!p||!confirm('Annuler ce paiement ? (il sera retiré de la caisse)')) return; S.caisse=S.caisse.filter(x=>x!==p); render(); toast('Paiement annulé'); }
+function chUnpay(id){ const c=CHG().find(x=>x.id===id), key=c.id+'|'+chSM(c,F_CH.mois); if(!CHP()[key]||!confirm('Remettre cette charge en « pas encore payé » ?')) return; delete CHP()[key]; render(); toast('Charge remise en « pas payé »'); }
 
 /* ---------------- MOUVEMENTS DE STOCK (date d'entrée / de sortie) ---------------- */
 function stkMove(s, t, q, d, note, ach, four){ q=+q||0; if(!s||!q) return; s.mv=s.mv||[]; s.mv.push({id:uid('m'), t, q, d:d||TODAY, note:note||'', ach:ach||'', four:four||''});
