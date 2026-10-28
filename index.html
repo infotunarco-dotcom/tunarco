@@ -505,6 +505,11 @@ function soldeCompte(compte, t){
   const rout = sum(S.caisse.filter(c=>c.compte===compte && c.sens==='out' && inT(c.date,t,compte)), c=>c.montant);
   return {rin, rout, solde: rin-rout};
 }
+// ===== UNE SEULE formule pour le solde caisse académie (utilisée partout : Accueil, Caisse, Google Sheets) =====
+// solde = (abonnements + inscriptions + autres recettes) − virements − dépenses saisies   [compétiteurs à part, non comptés]
+function caisseSolde(t){ const auto=recettesAuto('academie',t), manIn=S.caisse.filter(c=>c.compte==='academie'&&c.sens==='in'&&inT(c.date,t,'academie')), manOut=S.caisse.filter(c=>c.compte==='academie'&&c.sens==='out'&&inT(c.date,t,'academie'));
+  const ab=sum(auto.filter(x=>x.col!=='comp'),x=>+x.montant||0)+sum(manIn,c=>+c.montant||0), cp=sum(auto.filter(x=>x.col==='comp'),x=>+x.montant||0), vir=virAb(auto,manIn), rout=sum(manOut,c=>+c.montant||0);
+  return {ab, cp, vir, rout, solde:Math.round((ab-vir-rout)*1000)/1000}; }
 const inT = (d,t,compte) => compte!=='academie' || !t || (d>=(t==='T1'?AN_Y+'-07-01':TRIMS[t].debut) && d<=TRIMS[t].fin);
 function presenceStats(e){
   const ss = S.seances.filter(s=>s.presences[e.id]);
@@ -724,9 +729,9 @@ function caisseTable(t){
     if(r){ if(r.h){ left=['',r.h,'','']; } else if(r.st){ left=['',r.st,r.m,'']; } else left=r; }
     rows.push([...left, ...(d?[fmtD(d.date),d.libelle,+d.montant||0,d.rq||'']:['','','',''])]); if(r&&(r.h||r.st)) bold.push(rows.length-1); }
   const rin=sum(auto,x=>x.montant)+sum(manIn,c=>+c.montant||0), rout=sum(manOut,c=>+c.montant||0);
-  const ab=sum(auto.filter(x=>x.col!=='comp'),x=>x.montant)+sum(manIn,c=>+c.montant||0), cp=sum(auto.filter(x=>x.col==='comp'),x=>x.montant), vir=virAb(auto,manIn);
+  const {ab, cp, vir} = caisseSolde(t);
   rows.push(['','TT',rin,'','','TT',rout,'']); total.push(rows.length-1); rows.push(['','','','','','','','']);
-  [['Abonnements + inscriptions',ab],['− Virements (à la banque)',vir],['− Dépenses',rout],['SOLDE CAISSE (sans compétiteurs ni virements)',ab-vir-rout],['Compétiteurs (à part, non compté)',cp]].forEach(([l,v])=>{ rows.push(['','','','','',l,Math.round(v*1000)/1000,'']); if(l.startsWith('SOLDE')) total.push(rows.length-1); });
+  [['Abonnements + inscriptions',ab],['− Virements (à la banque)',vir],['− Dépenses',rout],['SOLDE CAISSE (sans compétiteurs ni virements)',caisseSolde(t).solde],['Compétiteurs (à part, non compté)',cp]].forEach(([l,v])=>{ rows.push(['','','','','',l,Math.round(v*1000)/1000,'']); if(l.startsWith('SOLDE')) total.push(rows.length-1); });
   return {rows, bold, total};
 }
 function achTables(){
@@ -927,7 +932,7 @@ VIEWS.dashboard = () => {
     <div class="kpi"><div class="l">Élèves actifs</div><div class="v">${actifs.length}</div><div class="s">${S.eleves.length-actifs.length} en pause / abandon</div></div>
     <div class="kpi g"><div class="l">Encaissé ${t} (abonnements + inscription)</div><div class="v">${dt(enc)}</div><div class="s">sur ${dt(att)} attendus</div></div>
     <div class="kpi o"><div class="l">Reste à encaisser ${t}</div><div class="v">${dt(att-enc>0?att-enc:0)}</div><div class="s">${nonPayes.length} élève(s) sans aucun paiement</div></div>
-    <div class="kpi b"><div class="l">Solde de la caisse</div><div class="v" style="color:${sc.solde<0?'var(--bad)':'var(--green)'}">${dt(sc.solde)}</div><div class="s">Ce mois : +${dt(encMois)} / −${dt(depMois)}</div></div>
+    <div class="kpi b"><div class="l">Solde caisse ${t} (sans compétiteurs ni virements)</div><div class="v" style="color:${caisseSolde(t).solde<0?'var(--bad)':'var(--green)'}">${dt(caisseSolde(t).solde)}</div><div class="s">Ce mois : +${dt(encMois)} / −${dt(depMois)}</div></div>
     <div class="kpi p"><div class="l">Taux de présence du jour</div><div class="v">${tp===null?'—':tp+' %'}</div><div class="s">${tpL}</div></div>
   </div>
   <div class="card"><h3>🎯 Objectif d'encaissement – ${T.nom} (mensualités, hors inscription, compétiteurs et projets)</h3>
@@ -1282,7 +1287,7 @@ VIEWS.caisse = () => {
   <div class="grid kpis">
     <div class="kpi g"><div class="l">Recettes</div><div class="v">${dt(sc.rin)}</div>${recDetail(recL)}</div>
     <div class="kpi" style="border-left-color:var(--bad)"><div class="l">Dépenses</div><div class="v">${dt(sc.rout)}</div></div>
-    ${compte==='academie'?(()=>{ const ab=sum(auto.filter(x=>x.col!=='comp'),x=>+x.montant||0)+sum(manIn,c=>+c.montant||0), cp=sum(auto.filter(x=>x.col==='comp'),x=>+x.montant||0), vir=virAb(auto,manIn), reste=ab-vir-sc.rout;
+    ${compte==='academie'?(()=>{ const {ab, cp, vir, solde:reste} = caisseSolde(t);
       const espIn=sum(auto.filter(x=>x.col!=='comp'&&(x.mode||'Espèces')==='Espèces'),x=>+x.montant||0)+sum(manIn.filter(c=>payMode(c)==='Espèces'),c=>+c.montant||0), espOut=sum(manOut.filter(c=>payMode(c)==='Espèces'),c=>+c.montant||0), esp=espIn-espOut;
       const nonEsp=ab-espIn, depNonEsp=sc.rout-espOut, K=(TDEF().comptage||{})[F_C.tab], ecart=K?(+K.m||0)-esp:null;
       const L=(l,v,st='')=>`<div style="display:flex;gap:6px;${st}"><span>${l}</span><span style="flex:1"></span><b style="white-space:nowrap">${v}</b></div>`;
@@ -1299,7 +1304,7 @@ VIEWS.caisse = () => {
     <div><div class="card tw" style="padding:0"><table class="ledger"><tr><th colspan="5" style="background:var(--bad)">DÉPENSES <span style="float:right;font-weight:400">${depL.length} ligne(s)</span></th></tr><tr><th>Date</th><th>Libellés</th><th class="num">Montant</th><th>RQ</th><th></th></tr>
       ${depL.map(row).join('')||'<tr><td colspan="5" class="empty">Aucune dépense.</td></tr>'}
       <tr class="tot"><td></td><td>TT</td><td class="num">${dt(sc.rout)}</td><td colspan="2"></td></tr>
-      ${compte==='academie'?(()=>{ const ab=sum(auto.filter(x=>x.col!=='comp'),x=>+x.montant||0)+sum(manIn,c=>+c.montant||0), vir=virAb(auto,manIn), cp=sum(auto.filter(x=>x.col==='comp'),x=>+x.montant||0), r=ab-vir-sc.rout;
+      ${compte==='academie'?(()=>{ const {ab, vir, cp, solde:r} = caisseSolde(t);
         const R=(l,v,st='')=>`<tr><td></td><td style="${st}">${l}</td><td class="num" style="${st}">${v}</td><td colspan="2"></td></tr>`;
         return R('Abonnements + inscriptions',dt(ab))+(vir?R('− Virements (à la banque)',dt(vir),'color:#64748b'):'')+R('− Dépenses',dt(sc.rout),'color:var(--bad)')
           +`<tr class="tot"><td></td><td>= Solde caisse <span class="small" style="font-weight:400">(sans compétiteurs ni virements)</span></td><td class="num" style="font-size:16px;color:${r<0?'var(--bad)':'var(--green)'}">${dt(r)}</td><td colspan="2"></td></tr>`
