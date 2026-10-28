@@ -1541,12 +1541,13 @@ function achSave(){
   let a; if(AE.id){ a=ACH().find(x=>x.id===AE.id); achUnstock(a); Object.assign(a,data); } else { a={id:uid('a'), ...data, stocked:0}; ACH().push(a); }
   if(a.items.length) achToStock(a);   // toujours ajouté automatiquement au stock
   let c=achCaisse(a);
-  if(AE.paye==='1'){ if(c) Object.assign(c,{montant, date:AE.pdate||TODAY, rq:AE.mode||'', libelle:achLib(a)}); else achPayNow(a, AE.pdate||TODAY, AE.mode); }
+  if(AE.paye==='1'){ if(c) Object.assign(c,{montant, date:AE.pdate||TODAY, rq:AE.mode||'', libelle:achLib(a)}, achCpt(a)); else achPayNow(a, AE.pdate||TODAY, AE.mode); }
   else if(c) S.caisse=S.caisse.filter(x=>x!==c);
   closeModal(); render(); toast('Achat enregistré ✔');
 }
 const achLib = a => `Achat ${a.four}${a.usage?' ('+a.usage+')':''}${a.num?' – '+(a.doc||'').split(' ')[0]+' N° '+a.num:''}`;
-function achPayNow(a, date, mode){ S.caisse.push({id:uid('c'), sens:'out', compte:'academie', cat:'Achat matériel', libelle:achLib(a), montant:+a.montant||0, date, rq:mode||'', refAchat:a.id}); }
+const achCpt = a => a.usage==='Compétition' ? {compte:'competition', cat:'Composants robots', refComp:(S.competitions.find(c=>c.nom===a.comp)||S.competitions.find(c=>a.comp&&c.nom&&c.nom.toLowerCase().includes(String(a.comp).toLowerCase()))||{}).id||''} : {compte:'academie', cat:'Achat matériel', refComp:''};   // achat pour une compétition → caisse Compétitions
+function achPayNow(a, date, mode){ S.caisse.push({id:uid('c'), sens:'out', ...achCpt(a), libelle:achLib(a), montant:+a.montant||0, date, rq:mode||'', refAchat:a.id}); }
 function achToStock(a){
   a.items.forEach(i=>{ let s=i.sid?stk(i.sid):null;
     if(!s){ s={id:uid('st'), nom:i.nom.trim(), cat:catOf(i.nom), prix:i.prix||0, type:'projet', qte:0, panne:0, seuil:0, init:0, sortie:0, catOk:1}; s.ref=genRef(s.nom); S.stock.push(s); i.sid=s.id; }
