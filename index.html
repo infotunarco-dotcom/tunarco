@@ -1647,7 +1647,7 @@ function editEleve(id){
     const cf={...(e.cf||{})}; CHAMPS().forEach((c,ci)=>{ cf[c]=fd['cf_'+ci]||''; delete fd['cf_'+ci]; }); fd.cf=cf;
     if(!isAdmin()){ ['tarif','insc','duT1','duProjet','type','mode','gratuit'].forEach(k=>delete fd[k]); } else { fd.tarif=+fd.tarif||0; fd.insc=+fd.insc||0; fd.gratuit=fd.gratuit?1:0; } if(isAdmin()){ fd.duT1 = fd.duT1===''?null:+fd.duT1; fd.duProjet = fd.duProjet===''?null:+fd.duProjet; }
     fd.jour = grp(fd.groupe).jour || e.jour;
-    if(id) Object.assign(e, fd); else S.eleves.push({id:uid('e'), rq:'', ...fd});
+    if(id){ moveGroupe(e, fd.groupe); Object.assign(e, fd); } else S.eleves.push({id:uid('e'), rq:'', ...fd});
   }, id&&isAdmin()?`<button type="button" class="btn r" style="margin-right:auto" onclick="del('eleves','${id}','${js(h(e.nom))}',x=>{S.tx=S.tx.filter(t=>t.eleve!==x)})">Supprimer</button>`:'');
 }
 function ficheEleve(id){
@@ -1965,11 +1965,31 @@ function addToGroup(gid){
     {k:'move',label:'Élève existant',type:'select',full:1,options:[['','—'],...autres.map(e=>[e.id,`${e.nom} (${e.jour} · ${gLabel(grp(e.groupe))})`])]},
   ], {niveau:'À préciser', ancien:'Nouveau'}, fd => {
     if(fd.move && g.compet){ const e=elv(fd.move); e.extra=[...new Set([...(e.extra||[]),gid])]; toast(e.nom+' ajouté aux compétiteurs ✔'); return; }
-    if(fd.move){ const e=elv(fd.move); e.groupe=gid; e.jour=g.jour; if(e.statut==='Abandon') e.statut='Actif'; toast(e.nom+' déplacé ✔'); return; }
+    if(fd.move){ const e=elv(fd.move); moveGroupe(e,gid); e.groupe=gid; e.jour=g.jour; if(e.statut==='Abandon') e.statut='Actif'; toast(e.nom+' déplacé ✔'); return; }
     if(!fd.nom.trim()){ toast('Tapez le nom ou choisissez un élève existant'); return false; }
     S.eleves.push({id:uid('e'), nom:fd.nom.trim(), jour:g.jour, groupe:gid, niveau:fd.niveau, ancien:fd.ancien, statut:fd.ancien==="séance d'essai"?ESSAI:'Actif',
       tel1:fd.tel1, tel2:'', parent:'', email:'', naissance:fd.naissance, age:'', type:'', mode:'', tarif:100, insc:50, duT1:null, rq:'', notes:''});
   });
+}
+/** changement de groupe principal : on déplace aussi les présences, formateurs et rattrapages de l'élève vers le nouveau groupe (même semaine) */
+function moveGroupe(e,ng){ const og=e.groupe; if(!e||!og||!ng||og===ng) return; const o=grp(og), n=grp(ng);
+  const io=JOURS.indexOf(o.jour), inn=JOURS.indexOf(n.jour), off=(io>=0&&inn>=0)?inn-io:0;
+  S.seances.filter(s=>s.groupe===og && ((s.presences||{})[e.id] || (s.pf&&s.pf[e.id]))).forEach(s=>{
+    const v=s.presences[e.id], f=stuForm(s,e.id,o), d=addDays(s.date,off);
+    let t=S.seances.find(x=>x.groupe===ng&&x.date===d);
+    if(!t){ t={id:uid('s'), groupe:ng, date:d, lecon:'', notes:'', presences:{}, par:s.par}; S.seances.push(t); }
+    const hasPf=t.pf&&Object.values(t.pf).some(Boolean), pre={}; if(!hasPf) Object.keys(t.presences).forEach(id=>{ if(id!==e.id){ const x=stuForm(t,id,n); if(x) pre[id]=x; } });
+    if(v && !t.presences[e.id]) t.presences[e.id]=v;
+    if(f && (stuForm(t,e.id,n)!==f || (!hasPf && Object.keys(pre).length))){
+      if(!hasPf) t.pf=pre;
+      t.pf[e.id]=f; t.forms=[...new Set(Object.values(t.pf).filter(Boolean))]; t.form=t.forms[0]||t.form||''; }
+    delete s.presences[e.id]; if(s.pf) delete s.pf[e.id];
+    if(!Object.keys(s.presences).length && !s.lecon) S.seances=S.seances.filter(x=>x!==s);
+  });
+  e.fg=e.fg||{}; if(e.fg[og]){ if(!e.fg[ng]) e.fg[ng]=e.fg[og]; delete e.fg[og]; }
+  RAT().forEach(r=>{ if(r.eleve===e.id && r.groupe===og){ r.groupe=ng; if(r.absDate) r.absDate=addDays(r.absDate,off); } });
+  if(e.extra) e.extra=e.extra.filter(x=>x!==ng);
+  if(typeof _C!=='undefined') _C.si=null; if(typeof P!=='undefined') P._k='';
 }
 function editInGroup(id,gid){
   const e=elv(id); const ex = gid && e.groupe!==gid && (e.extra||[]).includes(gid);
@@ -1978,7 +1998,7 @@ function editInGroup(id,gid){
     {k:'groupe',label:'Groupe',type:'select',full:1,options:sortGroups(S.groupes).map(g=>[g.id,gName(g)])},
     {k:'niveau',label:'Niveau',type:'select',options:['À préciser',...NIVEAUX]},
     {k:'statut',label:'Situation',type:'select',options:[['Actif','Actif'],[ESSAI,"Séance d'essai"],['En pause','En pause'],['Abandon','Abandon (retirer de la feuille)']]},
-  ], e, fd => { Object.assign(e, fd, {jour:grp(fd.groupe).jour}); if(fd.statut==='Abandon') toast(e.nom+' retiré de la feuille (gardé dans Élèves)'); },
+  ], e, fd => { moveGroupe(e, fd.groupe); Object.assign(e, fd, {jour:grp(fd.groupe).jour}); if(fd.statut==='Abandon') toast(e.nom+' retiré de la feuille (gardé dans Élèves)'); },
   `<button type="button" class="btn g" style="margin-right:auto" onclick="closeModal();ficheEleve('${id}')">Fiche complète</button>`
   + (ex?`<button type="button" class="btn r" onclick="if(confirm('Retirer ${js(h(e.nom))} du groupe ${js(h(gName(grp(gid))))} ? (il reste dans son groupe principal)')){closeModal();rmExtra('${id}','${gid}');}">🚪 Retirer de ce groupe</button>`:''));
 }
