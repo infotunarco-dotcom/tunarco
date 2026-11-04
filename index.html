@@ -909,23 +909,26 @@ const stBadge = s => badge(s, {'Réglé':'b-ok','Non payé':'b-bad','Partiel':'b
 /* ---------------- BILAN PAIEMENTS (cercle Réglé / Partiel / Non payé) ---------------- */
 function bilanPay(t){
   const L = S.eleves.filter(e=>e.statut!=='Abandon' && e.statut!==ESSAI && e.statut!=='Externe').map(e=>({e, s:situation(e,t)}));
-  const cats = [['Réglé','Payé','var(--green)','#1a8a45'],['Partiel','Partiel','var(--orange)','#f39200'],['Non payé','Non payé','var(--bad)','#d64545']].map(([k,l,c,hex])=>{
-    const x=L.filter(y=>y.s.statut===k); return {k,l,c,hex,n:x.length, anc:x.filter(y=>y.e.ancien==='Ancien').length, nouv:x.filter(y=>y.e.ancien==='Nouveau').length, paye:sum(x,y=>y.s.paye), reste:sum(x,y=>y.s.reste)}; });
-  const N = sum(cats,c=>c.n), autres = L.length-N, R=70, C=2*Math.PI*R; let off=0;
-  const arcs = N ? cats.filter(c=>c.n).map(c=>{ const len=c.n/N*C; const a=`<circle r="${R}" cx="90" cy="90" fill="none" stroke="${c.hex}" stroke-width="30" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 90 90)"><title>${c.l} : ${c.n} élève(s)</title></circle>`; off+=len; return a; }).join('') : `<circle r="${R}" cx="90" cy="90" fill="none" stroke="#e5e7eb" stroke-width="30"/>`;
+  const cats = [['Réglé','Payé','#1a8a45','#e8f5ec'],['Partiel','Partiel','#f39200','#fff4e5'],['Non payé','Non payé','#d64545','#fdecec']].map(([k,l,c,bg])=>{
+    const x=L.filter(y=>y.s.statut===k); return {k,l,c,bg,n:x.length, anc:x.filter(y=>y.e.ancien==='Ancien').length, nouv:x.filter(y=>y.e.ancien==='Nouveau').length}; });
+  const N = sum(cats,c=>c.n), A = sum(cats,c=>c.anc), Nv = sum(cats,c=>c.nouv), autres = L.length-N, R=100, C=2*Math.PI*R; let off=0;
+  const arcs = N ? cats.filter(c=>c.n).map(c=>{ const len=c.n/N*C; const a=`<circle r="${R}" cx="130" cy="130" fill="none" stroke="${c.c}" stroke-width="44" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 130 130)"><title>${c.l} : ${c.n} élève(s)</title></circle>`; off+=len; return a; }).join('') : `<circle r="${R}" cx="130" cy="130" fill="none" stroke="#e5e7eb" stroke-width="44"/>`;
   const pct = n => N ? Math.round(n/N*100)+' %' : '—';
-  return `<div class="card"><h3>📊 Bilan des paiements – ${h(TRIMS[t].nom)}</h3>
-    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:24px">
-      <svg viewBox="0 0 180 180" width="190" height="190" style="flex:none">${arcs}
-        <text x="90" y="86" text-anchor="middle" style="font-size:30px;font-weight:800;fill:#1d2b36">${N}</text>
-        <text x="90" y="108" text-anchor="middle" style="font-size:12px;fill:#6b7280">élèves</text></svg>
-      <div style="flex:1;min-width:260px;display:grid;gap:10px">
-        ${cats.map(c=>`<div style="border-left:6px solid ${c.c};background:#f8fafc;border-radius:10px;padding:10px 14px;cursor:pointer" onclick="F_PAY.tab='${t}';F_PAY.statut='${c.k}';go('paiements')" title="Voir la liste">
-          <div style="display:flex;align-items:baseline;gap:8px"><b style="color:${c.c};font-size:16px">${c.l}</b><span style="font-size:20px;font-weight:800">${c.n}</span><span class="small muted">élève(s) · ${pct(c.n)}</span>
-            <span class="sp" style="flex:1"></span><span class="small"><b>Ancien : ${c.anc}</b> · <b>Nouveau : ${c.nouv}</b>${c.n-c.anc-c.nouv?` · autre : ${c.n-c.anc-c.nouv}`:''}</span></div>
-          <div class="small" style="margin-top:4px">${c.k==='Non payé'?`Total à payer : <b style="color:${c.c}">${dt(c.reste)}</b>`:c.k==='Partiel'?`Total payé : <b style="color:${c.c}">${dt(c.paye)}</b> · reste : <b style="color:var(--bad)">${dt(c.reste)}</b>`:`Total payé : <b style="color:${c.c}">${dt(c.paye)}</b>`}</div></div>`).join('')}
-        ${autres?`<div class="small muted">+ ${autres} élève(s) gratuit(s) ou sans tarif, non comptés dans le cercle.</div>`:''}
-      </div></div></div>`;
+  return `<div class="card" style="text-align:center"><h3 style="text-align:center;font-size:20px">📊 Bilan des paiements – ${h(TRIMS[t].nom)}</h3>
+    <svg viewBox="0 0 260 260" width="300" height="300" style="display:block;margin:6px auto 14px">${arcs}
+      <text x="130" y="122" text-anchor="middle" style="font-size:46px;font-weight:800;fill:#1d2b36">${N}</text>
+      <text x="130" y="146" text-anchor="middle" style="font-size:14px;fill:#6b7280">élèves</text>
+      <text x="130" y="168" text-anchor="middle" style="font-size:13px;font-weight:700;fill:#1d2b36">Ancien ${A} · Nouveau ${Nv}</text></svg>
+    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:14px">
+      ${cats.map(c=>`<div style="flex:1;min-width:200px;max-width:280px;background:${c.bg};border:2px solid ${c.c};border-radius:14px;padding:14px;cursor:pointer" onclick="F_PAY.tab='${t}';F_PAY.statut='${c.k}';go('paiements')" title="Voir la liste">
+        <div style="color:${c.c};font-size:18px;font-weight:800">${c.l}</div>
+        <div style="font-size:40px;font-weight:800;color:${c.c};line-height:1.1">${c.n}</div>
+        <div class="small muted">élève(s) · ${pct(c.n)}</div>
+        <div style="display:flex;justify-content:center;gap:18px;margin-top:10px">
+          <div><div class="small muted">Ancien</div><div style="font-size:24px;font-weight:800">${c.anc}</div></div>
+          <div><div class="small muted">Nouveau</div><div style="font-size:24px;font-weight:800">${c.nouv}</div></div></div></div>`).join('')}
+    </div>
+    ${autres?`<div class="small muted" style="margin-top:8px">+ ${autres} élève(s) gratuit(s) ou sans tarif, non comptés.</div>`:''}</div>`;
 }
 VIEWS.dashboard = () => {
   const t = curTrim(), T = TRIMS[t];
@@ -948,7 +951,7 @@ VIEWS.dashboard = () => {
   const todayGroups = sortGroups(S.groupes.filter(g=>g.jour===jourOf(TODAY)));
   const byDay = JOURS.map(j=>({j, n:actifs.filter(e=>e.jour===j).length})).filter(x=>x.n);
   const maxD = Math.max(...byDay.map(x=>x.n),1);
-  return `
+  return `${isAdmin()?bilanPay(t):''}
   <div class="grid kpis">
     <div class="kpi"><div class="l">Élèves actifs</div><div class="v">${actifs.length}</div><div class="s">${S.eleves.length-actifs.length} en pause / abandon</div></div>
     <div class="kpi g"><div class="l">Encaissé ${t} (abonnements + inscription)</div><div class="v">${dt(enc)}</div><div class="s">sur ${dt(att)} attendus</div></div>
@@ -959,7 +962,6 @@ VIEWS.dashboard = () => {
   <div class="card"><h3>🎯 Objectif d'encaissement – ${T.nom} (mensualités, hors inscription, compétiteurs et projets)</h3>
     <div style="display:flex;align-items:center;gap:12px"><div class="bar" style="flex:1;height:14px;position:relative"><i style="width:${Math.min(100,abo/S.objectif.max*100)}%;background:${abo>=S.objectif.min?'var(--green)':'var(--blue)'}"></i></div><b>${dt(abo)}</b></div>
     <div class="small muted" style="margin-top:6px">Minimum ${dt(S.objectif.min)} · Maximum ${dt(S.objectif.max)} — modifiable dans Paramètres</div></div>
-  ${isAdmin()?bilanPay(t):''}
   <div class="grid two">
     <div class="card"><h3>🔔 Alertes</h3>
       ${(()=>{ const ch=chequesAVenir(); return ch.length?`<div class="alert info"><b>🏦 ${ch.length} chèque(s) à encaisser</b><span class="sp"></span><button class="btn sm" onclick="chequesModal()">Voir</button></div>`:''; })()}
@@ -1025,7 +1027,7 @@ function payTrim(t){
   const moisCols=[...(TRIMS[t].insc?[['insc',"Frais d'inscription"]]:[]),...MOIS_START[t].map((m,i)=>['m'+(i+1),MOIS_L[+m.slice(5,7)-1].charAt(0)+MOIS_L[+m.slice(5,7)-1].slice(1).toLowerCase()])];
   const resteCol=c=>{ let m=0,n=0; S.eleves.filter(e=>e.statut!=='Abandon'&&e.statut!=='Externe'&&!e.gratuit).forEach(e=>{ const r=Math.max(0,attenduCol(e,t,c)-cellSum(e.id,t,c)); if(r>0){m+=r;n++;} }); return {m,n}; };
   const echus=[...(TRIMS[t].insc&&TODAY>addDays(TRIMS[t].debut,9)?["inscription"]:[]),...MOIS_START[t].filter(m=>TODAY>addDays(m,9)).map(m=>MOIS_L[+m.slice(5,7)-1].toLowerCase())];
-  return `
+  return `${bilanPay(t)}
   <div class="alert info" style="display:block;margin-bottom:12px"><b>📌 Reste à payer par mois (${h(TRIMS[t].nom)})</b>
     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px">${moisCols.map(([c,l])=>{ const r=resteCol(c); return `<div style="background:#fff;border:1px solid #dbe4f0;border-radius:10px;padding:8px 14px;min-width:150px"><div class="small muted">${h(l)}</div><div style="font-size:18px;font-weight:700;color:${r.m?'var(--bad)':'var(--green)'}">${dt(r.m)}</div><div class="small muted">${r.n?r.n+' adhérent(s)':'tout est payé ✔'}</div></div>`; }).join('')}</div>
     <div class="small muted" style="margin-top:6px">« En retard » = seulement ce qui devait déjà être payé aujourd'hui (${echus.length?echus.join(' + '):'rien encore'}).</div></div>
@@ -1035,7 +1037,6 @@ function payTrim(t){
     <div class="kpi o"><div class="l">Reste à payer</div><div class="v">${dt(sum(all,s=>s.reste))}</div><div class="s">${all.filter(s=>s.statut==='Non payé').length} non payé · ${all.filter(s=>s.statut==='Partiel').length} partiel</div></div>
     <div class="kpi" style="border-left-color:var(--bad)"><div class="l">En retard au ${fmtD(TODAY).slice(0,5)} (échéance le 10)</div><div class="v" style="color:var(--bad)">${dt(sum(all,s=>s.retard))}</div><div class="s">${all.filter(s=>s.retard>0).length} élève(s)</div></div>
   </div>
-  ${bilanPay(t)}
   ${filtres()}
   <div class="card tw" style="padding:0;max-height:75vh;overflow:auto"><table class="ptable">
     <thead><tr><th>JR</th><th>N°</th><th style="text-align:left">Nom et Prénom</th>${cols.map(([,l])=>`<th>${l}</th>`).join('')}<th>Total payé</th><th>Reste à payer</th><th>Mode de paiement</th><th>Rq</th><th>Type de paiement</th><th></th></tr></thead>
