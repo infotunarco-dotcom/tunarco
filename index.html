@@ -2617,8 +2617,12 @@ VIEWS.competiteurs = () => {
   setHead('Compétiteurs', `${cands.length} enfant(s) · bloc-notes de chaque jour`, '');
   const tabs=`<div class="tabs"><button class="${F_CPT.v==='plan'?'on':''}" onclick="F_CPT.v='plan';render()">📝 Bloc-notes</button><button class="${F_CPT.v==='liste'?'on':''}" onclick="F_CPT.v='liste';render()">👥 Liste des compétiteurs</button></div>`;
   if(F_CPT.v==='plan') return tabs + compPlan();
-  return tabs + `<div class="card tw" style="padding:0;max-width:720px"><table><thead><tr><th>N°</th><th style="text-align:left">Nom et Prénom</th><th>Âge</th><th style="text-align:left">Niveau</th></tr></thead><tbody>
-    ${cands.map((e,i)=>`<tr><td class="idx">${i+1}</td><td class="nm" style="cursor:pointer" onclick="ficheEleve('${e.id}')"><b>${h(e.nom)}</b></td><td class="c">${ageOf(e)||''}</td><td>${h(e.niveau||'')}</td></tr>`).join('')||`<tr><td colspan="4" class="empty">Aucun compétiteur dans le groupe « Compétiteurs » de la feuille de présence.</td></tr>`}
+  const cg0 = sortGroups(S.groupes.filter(g=>g.compet))[0];
+  const gOfE = e => (S.groupes.find(g=>g.compet && inG(e,g.id))||{}).id||'';
+  return tabs + `${canEdit()?`<div class="toolbar" style="max-width:820px">${cg0?`<span class="small muted">Groupe : <b>${h(gName(cg0))}</b></span>`:''}<span class="sp"></span><button class="btn o" onclick="${cg0?`addToGroup('${cg0.id}')`:`toast('Créez d\\'abord un groupe Compétiteurs (Présences → mode modification)')`}">+ Ajouter un compétiteur</button></div>`:''}
+    <div class="card tw" style="padding:0;max-width:820px"><table><thead><tr><th>N°</th><th style="text-align:left">Nom et Prénom</th><th>Âge</th><th style="text-align:left">Niveau</th>${canEdit()?'<th></th>':''}</tr></thead><tbody>
+    ${cands.map((e,i)=>`<tr><td class="idx">${i+1}</td><td class="nm" style="cursor:pointer" onclick="ficheEleve('${e.id}')"><b>${h(e.nom)}</b></td><td class="c">${ageOf(e)||''}</td><td>${h(e.niveau||'')}</td>
+      ${canEdit()?`<td style="white-space:nowrap;text-align:right"><button class="btn sm g" onclick="editEleve('${e.id}')">✏️ Modifier</button> <button class="btn sm r" onclick="cptRm('${e.id}','${gOfE(e)}')">🗑 Retirer</button></td>`:''}</tr>`).join('')||`<tr><td colspan="5" class="empty">Aucun compétiteur dans le groupe « Compétiteurs » de la feuille de présence.</td></tr>`}
     </tbody></table></div>`;
 };
 /* ===================== PLANNING COMPÉTITEURS (par semaine : compétition, projet, enfants) ===================== */
@@ -2628,6 +2632,9 @@ const fmtDM = d => fmtD(d).slice(0,5);
 const compCands = () => { const cg=sortGroups(S.groupes.filter(g=>g.compet)), out=[]; cg.forEach(g=>S.eleves.filter(e=>inG(e,g.id) && e.statut!=='Abandon').sort((a,b)=>a.nom.localeCompare(b.nom)).forEach(e=>{ if(!out.includes(e)) out.push(e); })); return out; };
 const cplD = x => x.date || x.semaine;
 let F_CPJ={};
+function cptRm(id,gid){ const e=elv(id); if(!gid) return;
+  if(e.groupe===gid) return toast(e.nom+' a ce groupe comme groupe principal : cliquez sur ✏️ Modifier et changez son groupe');
+  if(!confirm('Retirer '+e.nom+' des compétiteurs ? (il reste dans son groupe normal, ses données sont gardées)')) return; rmExtra(id,gid); }
 function compPlan(){
   const N = CPL().slice().sort((a,b)=>(b.pin?1:0)-(a.pin?1:0) || cplD(b).localeCompare(cplD(a)) || (b.ts||'').localeCompare(a.ts||''));
   const txt = x => x.text!==undefined ? x.text : [comp(x.comp)?'🏆 '+comp(x.comp).nom:x.compLib, x.projet?'🔧 '+x.projet:'', x.notes, x.eleves&&x.eleves.length?'👥 '+x.eleves.map(id=>elv(id)?.nom||'?').join(', '):''].filter(Boolean).join('\n');
