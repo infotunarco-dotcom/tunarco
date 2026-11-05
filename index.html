@@ -2614,8 +2614,8 @@ function setEq(cid,qi,k,v){ comp(cid).equipes[qi][k]=v.trim(); render(); toast('
 let F_CPT={v:'plan', all:false};
 VIEWS.competiteurs = () => {
   const cands = compCands();
-  setHead('Compétiteurs', `${cands.length} enfant(s) · bloc-notes de chaque jour`, '');
-  const tabs=`<div class="tabs"><button class="${F_CPT.v==='plan'?'on':''}" onclick="F_CPT.v='plan';render()">📝 Bloc-notes</button><button class="${F_CPT.v==='liste'?'on':''}" onclick="F_CPT.v='liste';render()">👥 Liste des compétiteurs</button></div>`;
+  setHead('Compétiteurs', `${cands.length} enfant(s) · planning de chaque jour`, '');
+  const tabs=`<div class="tabs"><button class="${F_CPT.v==='plan'?'on':''}" onclick="F_CPT.v='plan';render()">🗓️ Planning</button><button class="${F_CPT.v==='liste'?'on':''}" onclick="F_CPT.v='liste';render()">👥 Liste des compétiteurs</button></div>`;
   if(F_CPT.v==='plan') return tabs + compPlan();
   const cg0 = sortGroups(S.groupes.filter(g=>g.compet))[0];
   const gOfE = e => (S.groupes.find(g=>g.compet && inG(e,g.id))||{}).id||'';
@@ -2641,17 +2641,17 @@ function compPlan(){
   const card = x => { const d=cplD(x), t=txt(x); return `<div class="nt-note ${x.pin?'pin':''}"><div class="small muted" style="display:flex;gap:6px;align-items:center">${x.pin?'📌 ':''}<b style="color:var(--navy)">${jourOf(d)} ${fmtD(d)}</b>${x.par?' · '+h(usr(x.par).nom||''):''}<span class="sp" style="flex:1"></span>
       ${canEdit()?`<button class="mini" title="Épingler" onclick="cpnPin('${x.id}')">📌</button><button class="mini r" title="Supprimer" onclick="cpnDel('${x.id}')">🗑</button>`:''}</div>
       <textarea class="nt-area" rows="${Math.min(12,Math.max(3,String(t).split('\n').length+1))}" ${canEdit()?'':'readonly'} onchange="cpnSet('${x.id}',this.value)">${h(t)}</textarea></div>`; };
-  return `<div class="card"><h3 style="margin-top:0">📝 Bloc-notes compétiteurs <span class="small muted">· chaque jour : ce qu'ils ont fait, le projet, les enfants…</span></h3>
+  return `<div class="card"><h3 style="margin-top:0">🗓️ Planning compétiteurs <span class="small muted">· chaque jour : ce qu'ils ont fait, le projet, les enfants…</span></h3>
     ${canEdit()?`<div class="toolbar" style="margin-bottom:6px"><label class="small muted" style="font-weight:600">📅 Jour <input id="cpnD" type="date" value="${TODAY}"></label></div>
-    <textarea id="cpnTxt" rows="4" placeholder="Écrire une note… (ex : RoboCup ENSI – robot suiveur : montage du châssis, test des capteurs. Enfants : Dorra, Arij…)" style="width:100%"></textarea>
-    <div class="toolbar" style="margin-top:6px"><span class="sp"></span><button class="btn o" onclick="cpnAdd()">+ Ajouter la note</button></div>`:''}
-    ${N.map(card).join('')||'<div class="empty small">Aucune note.</div>'}</div>`;
+    <textarea id="cpnTxt" rows="4" placeholder="Écrire le planning du jour… (ex : RoboCup ENSI – robot suiveur : montage du châssis, test des capteurs. Enfants : Dorra, Arij…)" style="width:100%"></textarea>
+    <div class="toolbar" style="margin-top:6px"><span class="sp"></span><button class="btn o" onclick="cpnAdd()">+ Ajouter au planning</button></div>`:''}
+    ${N.map(card).join('')||'<div class="empty small">Rien dans le planning pour le moment.</div>'}</div>`;
 }
-function cpnAdd(){ const t=$('#cpnTxt').value.trim(); if(!t) return toast('Écrivez la note'); const d=$('#cpnD').value||TODAY;
-  CPL().push({id:uid('cp'), date:d, semaine:lundiOf(d), text:t, eleves:[], par:S.session.id, ts:new Date().toISOString(), pin:false}); render(); toast('Note ajoutée ✔'); }
-function cpnSet(id,v){ const x=CPL().find(y=>y.id===id); x.text=v; toast('Note enregistrée ✔'); }
+function cpnAdd(){ const t=$('#cpnTxt').value.trim(); if(!t) return toast('Écrivez le planning'); const d=$('#cpnD').value||TODAY;
+  CPL().push({id:uid('cp'), date:d, semaine:lundiOf(d), text:t, eleves:[], par:S.session.id, ts:new Date().toISOString(), pin:false}); render(); toast('Ajouté au planning ✔'); }
+function cpnSet(id,v){ const x=CPL().find(y=>y.id===id); x.text=v; toast('Planning enregistré ✔'); }
 function cpnPin(id){ const x=CPL().find(y=>y.id===id); x.pin=!x.pin; render(); }
-function cpnDel(id){ if(!confirm('Supprimer cette note ?')) return; S.cplan=CPL().filter(y=>y.id!==id); render(); }
+function cpnDel(id){ if(!confirm('Supprimer ce jour du planning ?')) return; S.cplan=CPL().filter(y=>y.id!==id); render(); }
 function editCPL(w, id){
   const x = id ? CPL().find(y=>y.id===id) : {date:w, comp:'', compLib:'', projet:'', notes:'', eleves:[]};
   const d = cplD(x)||w;
