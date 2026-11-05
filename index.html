@@ -2617,15 +2617,8 @@ VIEWS.competiteurs = () => {
   setHead('Compétiteurs', `${cands.length} enfant(s) · bloc-notes de chaque jour`, '');
   const tabs=`<div class="tabs"><button class="${F_CPT.v==='plan'?'on':''}" onclick="F_CPT.v='plan';render()">📝 Bloc-notes</button><button class="${F_CPT.v==='liste'?'on':''}" onclick="F_CPT.v='liste';render()">👥 Liste des compétiteurs</button></div>`;
   if(F_CPT.v==='plan') return tabs + compPlan();
-  const cg = S.groupes.filter(g=>g.compet).map(g=>g.id);
-  const cur = lundiOf(TODAY);
-  return tabs + `<div class="card tw" style="padding:0"><table><thead><tr><th>N°</th><th style="text-align:left">Nom et Prénom</th><th>Âge</th><th style="text-align:left">Niveau</th><th style="text-align:left">Groupe</th><th style="text-align:left">🏆 Compétitions</th><th>Présences compét.</th></tr></thead><tbody>
-    ${cands.map((e,i)=>{ const comps=S.competitions.filter(c=>compParts(c).includes(e.id)).sort((a,b)=>a.date.localeCompare(b.date));
-      const pw=CPL().filter(x=>x.semaine===cur && x.eleves.includes(e.id));
-      const ss=S.seances.filter(s=>cg.includes(s.groupe) && s.presences[e.id]); const P=ss.filter(s=>s.presences[e.id]!=='A').length, A=ss.length-P;
-      return `<tr><td class="idx">${i+1}</td><td class="nm" style="cursor:pointer" onclick="ficheEleve('${e.id}')"><b>${h(e.nom)}</b></td><td class="c">${ageOf(e)||''}</td><td>${h(e.niveau||'')}</td><td class="small">${h(gName(grp(e.groupe)))}</td>
-        <td>${comps.map(c=>{ const q=c.equipes.find(q=>q.eleves.includes(e.id)); return `<span class="badge ${c.date<TODAY?'b-mut':'b-bad'}" style="margin:2px 2px 0 0" title="${h(q?.nom||'')}${q?.robot?' · '+h(q.robot):''}">${h(c.nom)} · ${fmtDM(c.date)}</span>`; }).join('')||'<span class="muted small">—</span>'}</td>
-        <td class="c"><b style="color:var(--green)">${P}</b> / <b style="color:var(--bad)">${A}</b></td></tr>`; }).join('')||`<tr><td colspan="7" class="empty">Aucun compétiteur. Ajoutez des élèves au groupe « Compétiteurs » (feuille Présences) ou aux équipes d'une compétition.</td></tr>`}
+  return tabs + `<div class="card tw" style="padding:0;max-width:720px"><table><thead><tr><th>N°</th><th style="text-align:left">Nom et Prénom</th><th>Âge</th><th style="text-align:left">Niveau</th></tr></thead><tbody>
+    ${cands.map((e,i)=>`<tr><td class="idx">${i+1}</td><td class="nm" style="cursor:pointer" onclick="ficheEleve('${e.id}')"><b>${h(e.nom)}</b></td><td class="c">${ageOf(e)||''}</td><td>${h(e.niveau||'')}</td></tr>`).join('')||`<tr><td colspan="4" class="empty">Aucun compétiteur dans le groupe « Compétiteurs » de la feuille de présence.</td></tr>`}
     </tbody></table></div>`;
 };
 /* ===================== PLANNING COMPÉTITEURS (par semaine : compétition, projet, enfants) ===================== */
