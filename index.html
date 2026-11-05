@@ -2633,8 +2633,7 @@ VIEWS.competiteurs = () => {
 const CPL = () => S.cplan || (S.cplan=[]);
 const lundiOf = d => { let x=d; while(jourOf(x)!=='Lundi') x=addDays(x,-1); return x; };
 const fmtDM = d => fmtD(d).slice(0,5);
-const compCands = () => { const ids=new Set(); S.groupes.filter(g=>g.compet).forEach(g=>S.eleves.forEach(e=>{ if(inG(e,g.id)) ids.add(e.id); })); S.eleves.forEach(e=>{ if(isCompetiteur(e)) ids.add(e.id); }); S.competitions.forEach(c=>compParts(c).forEach(id=>ids.add(id)));
-  return [...ids].map(elv).filter(e=>e && e.statut!=='Abandon').sort((a,b)=>a.nom.localeCompare(b.nom)); };
+const compCands = () => { const cg=sortGroups(S.groupes.filter(g=>g.compet)), out=[]; cg.forEach(g=>S.eleves.filter(e=>inG(e,g.id) && e.statut!=='Abandon').sort((a,b)=>a.nom.localeCompare(b.nom)).forEach(e=>{ if(!out.includes(e)) out.push(e); })); return out; };
 function compPlan(){
   const cur=lundiOf(TODAY), first=lundiOf(ANNEE.debut), weeks=[]; for(let w=first; w<=ANNEE.fin; w=addDays(w,7)) weeks.push(w);
   const shown = F_CPT.all ? weeks : weeks.filter(w=>w>=addDays(cur,-7) && w<=addDays(cur,7*8));
