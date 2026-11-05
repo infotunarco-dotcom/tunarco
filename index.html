@@ -47,6 +47,7 @@ a{color:var(--blue)}
 .side nav a:hover{color:#fff;background:rgba(255,255,255,.08)}
 .side nav a.on{color:#fff;border-bottom-color:var(--orange);background:rgba(255,255,255,.12)}
 .side nav a.mob{display:none}
+nav a.navpt{margin:6px 6px;padding:5px 12px;border-radius:999px;background:linear-gradient(135deg,#14b8a6,#0ea5e9);color:#fff;border-bottom:0;box-shadow:0 2px 6px rgba(0,0,0,.25)}nav a.navpt:hover{filter:brightness(1.1);background:linear-gradient(135deg,#14b8a6,#0ea5e9)}nav a.navpt.on{background:linear-gradient(135deg,#0d9488,#0284c7);outline:2px solid #fff}
 .burger2{display:none;border:0;background:var(--navy);color:#fff;border-radius:9px;font-size:20px;padding:4px 11px;cursor:pointer}
 .main{min-width:0;max-width:1600px;margin:0 auto}
 .head{color:var(--ink);padding:18px 26px 6px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
@@ -553,6 +554,7 @@ const NAV = [
   {k:'competiteurs', t:'🏅 Compétiteurs'},
   {k:'competitions', t:'🏆 Compétitions'},
   {k:'masterclass', t:'🎓 Master class'},
+  {k:'pointage', t:'🕒 Pointage personnel', admin:true, cls:'navpt'},
   {k:'notes', t:'📝 Notes & tâches'},
   {k:'utilisateurs', t:'🔐 Formateurs', admin:true},
   {k:'parametres', t:'⚙️ Paramètres', admin:true},
@@ -581,7 +583,7 @@ function go(k){
   if(!item || (item.admin && !isAdmin())) k = isAdmin()?'dashboard':'feuille';
   VIEW = k; anSelFill();
   const MN=S.menu||{};
-  $('#nav').innerHTML = NAV.filter(n=>(!n.admin || isAdmin()) && !(MN[n.k]||{}).hidden).map(n=>`<a class="${n.k===k?'on':''}" onclick="go('${n.k}')">${h((MN[n.k]||{}).t||n.t)}${n.k==='notes'&&ntOpen()?` <b class="ntb">${ntOpen()}</b>`:''}</a>`).join('') + (isAdmin()?`<a class="mob" onclick="exportData()">💾 Sauvegarder les données</a><a class="mob" onclick="document.getElementById('imp').click()">📂 Charger une sauvegarde</a>`:'');
+  $('#nav').innerHTML = NAV.filter(n=>(!n.admin || isAdmin()) && !(MN[n.k]||{}).hidden).map(n=>`<a class="${n.k===k?'on':''} ${n.cls||''}" onclick="go('${n.k}')">${h((MN[n.k]||{}).t||n.t)}${n.k==='notes'&&ntOpen()?` <b class="ntb">${ntOpen()}</b>`:''}</a>`).join('') + (isAdmin()?`<a class="mob" onclick="exportData()">💾 Sauvegarder les données</a><a class="mob" onclick="document.getElementById('imp').click()">📂 Charger une sauvegarde</a>`:'');
   $('#side').classList.remove('open');
   render(); window.scrollTo(0,0);
 }
@@ -2739,6 +2741,51 @@ const NTS = () => (S.notes = S.notes || []);
 const TDS = () => (S.todos = S.todos || []);
 const ntOpen = () => S.session ? TDS().filter(t=>!t.done && t.user===S.session.id).length : 0;
 function ntUser(){ if(!isAdmin()) return S.session.id; return F_NT.u; }   // '' = tous (admin)
+/* ===================== POINTAGE DU PERSONNEL (lecture du Google Sheet via le script Apps Script) ===================== */
+const PT_URL0 = 'https://script.google.com/macros/s/AKfycbzBnS8zAKqnVL2Eh0mpW7jAYQl6ueKawfvQwC7yE78se3fNCr091xVkQedazFMzRQDrUQ/exec';
+const PTK = { get(){ try{ return localStorage.getItem('tunarco_pt_key')||''; }catch(e){ return ''; } }, set(v){ try{ v?localStorage.setItem('tunarco_pt_key',v):localStorage.removeItem('tunarco_pt_key'); }catch(e){} } };
+let PTD = {data:null, err:'', busy:false, p:'', m:''};
+const ptUrl = () => (S.pointage&&S.pointage.url) || PT_URL0;
+const ptKey = d => { const p=String(d).split('/'); return p[2]+'-'+p[1]+'-'+p[0]; };
+async function ptLoad(){ if(PTD.busy) return; const k=PTK.get(); if(!k){ render(); return; }
+  PTD.busy=true; PTD.err=''; render();
+  try{ const r=await fetch(ptUrl(),{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'donnees',key:k,jours:0})}); const d=await r.json();
+    if(!d.ok){ PTD.err=d.msg||'Erreur'; if(/refus/i.test(PTD.err)) PTK.set(''); } else { PTD.data=d; PTD.at=new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); } }
+  catch(e){ PTD.err='Connexion impossible au script de pointage'; }
+  PTD.busy=false; if(VIEW==='pointage') render(); }
+function ptLogin(){ const v=$('#ptk').value.trim(); if(!v) return toast('Tapez le mot de passe'); PTK.set(v); ptLoad(); }
+const hm = min => { min=Math.round(min); return Math.floor(min/60)+'h'+String(min%60).padStart(2,'0'); };
+const tmin = t => { const [a,b]=String(t).split(':'); return (+a)*60+(+b||0); };
+function ptJours(P){ // regroupe par personne + jour : entrées / sorties et durée
+  const g={}; P.forEach(x=>{ const k=x.id+'|'+ptKey(x.date); (g[k]=g[k]||{id:String(x.id), nom:x.nom, prenom:x.prenom, d:ptKey(x.date), l:[]}).l.push(x); });
+  return Object.values(g).map(j=>{ j.l.sort((a,b)=>a.heure.localeCompare(b.heure)); let tot=0, open=null; j.l.forEach(x=>{ if(x.type==='Entrée') open=x.heure; else if(x.type==='Sortie'&&open){ tot+=tmin(x.heure)-tmin(open); open=null; } });
+    j.ent=(j.l.find(x=>x.type==='Entrée')||{}).heure||''; j.sor=([...j.l].reverse().find(x=>x.type==='Sortie')||{}).heure||''; j.open=!!open; j.min=tot; return j; });
+}
+VIEWS.pointage = () => {
+  setHead('Pointage du personnel', 'Données du Google Sheet « Pointages » (appli mobile) · lecture seule, rien n\'est modifié ni supprimé', PTK.get()?`<button class="hb" onclick="ptLoad()">🔄 Actualiser</button>`:'');
+  if(!PTK.get()) return `<div class="card" style="max-width:460px"><h3 style="margin-top:0">🔐 Connexion au pointage</h3><div class="small muted" style="margin-bottom:8px">Tapez le mot de passe admin du script de pointage (le même que la page Admin du pointage). Il reste enregistré seulement sur cet ordinateur.</div>
+    ${PTD.err?`<div class="alert bad small">${h(PTD.err)}</div>`:''}<input id="ptk" type="password" style="width:100%" placeholder="Mot de passe admin" onkeydown="if(event.key==='Enter')ptLogin()"><div class="toolbar" style="margin-top:8px"><span class="sp"></span><button class="btn o" onclick="ptLogin()">Se connecter</button></div></div>`;
+  if(!PTD.data){ if(!PTD.busy && !PTD.err) setTimeout(ptLoad,0); return PTD.err?`<div class="alert bad">${h(PTD.err)} <button class="btn sm" onclick="ptLoad()">Réessayer</button></div>`:'<div class="card empty">⏳ Chargement des pointages…</div>'; }
+  const D=PTD.data, pers=D.personnel||[], P=D.pointages||[], J=ptJours(P), today=ptKey(D.aujourdhui);
+  const months=[...new Set(J.map(j=>j.d.slice(0,7)))].sort().reverse(); if(!PTD.m) PTD.m=months[0]||TODAY.slice(0,7);
+  const nomOf = id => { const p=pers.find(x=>String(x.id)===String(id)); return p?p.prenom+' '+p.nom:'?'; };
+  const jT = J.filter(j=>j.d===today);
+  const todayCards = pers.filter(p=>p.actif).map(p=>{ const j=jT.find(x=>x.id===String(p.id)); const st=!j?['Absent','#94a3b8','#f1f5f9']:j.open?['Présent','#16a34a','#dcfce7']:['Parti','#0284c7','#e0f2fe'];
+    return `<div style="flex:1;min-width:170px;max-width:240px;background:${st[2]};border-left:5px solid ${st[1]};border-radius:12px;padding:10px 12px"><b>${h(p.prenom+' '+p.nom)}</b><div style="color:${st[1]};font-weight:800">${st[0]}</div><div class="small muted">${j?`Entrée ${j.ent.slice(0,5)}${j.sor?' · Sortie '+j.sor.slice(0,5):''}${j.min?' · '+hm(j.min):''}`:'pas encore pointé'}</div></div>`; }).join('');
+  const JM = J.filter(j=>j.d.startsWith(PTD.m) && (!PTD.p || j.id===PTD.p));
+  const byP = {}; JM.forEach(j=>{ (byP[j.id]=byP[j.id]||{id:j.id, n:0, min:0, open:0}); byP[j.id].n++; byP[j.id].min+=j.min; if(j.open&&j.d!==today) byP[j.id].open++; });
+  const PL = P.filter(x=>ptKey(x.date).startsWith(PTD.m) && (!PTD.p || String(x.id)===PTD.p)).sort((a,b)=>(ptKey(b.date)+b.heure).localeCompare(ptKey(a.date)+a.heure));
+  const mLab = m => MOIS_L[+m.slice(5,7)-1].charAt(0)+MOIS_L[+m.slice(5,7)-1].slice(1).toLowerCase()+' '+m.slice(0,4);
+  return `<div class="card"><h3 style="margin-top:0">📍 Aujourd'hui · ${h(D.aujourdhui)} <span class="small muted">· mis à jour à ${PTD.at||''}</span></h3><div style="display:flex;flex-wrap:wrap;gap:10px">${todayCards||'<div class="small muted">Aucun personnel actif.</div>'}</div></div>
+    <div class="toolbar"><select onchange="PTD.m=this.value;render()">${months.map(m=>`<option value="${m}" ${PTD.m===m?'selected':''}>${mLab(m)}</option>`).join('')||`<option>${mLab(PTD.m)}</option>`}</select>
+      <select onchange="PTD.p=this.value;render()"><option value="">Tout le personnel</option>${pers.map(p=>`<option value="${h(String(p.id))}" ${PTD.p===String(p.id)?'selected':''}>${h(p.prenom+' '+p.nom)}${p.actif?'':' (inactif)'}</option>`).join('')}</select>
+      <span class="sp"></span><span class="small muted">${P.length} pointage(s) au total dans le Google Sheet</span></div>
+    <div class="card tw" style="padding:0"><table><thead><tr><th style="text-align:left">👤 Personnel</th><th>Jours pointés</th><th>Total heures</th><th>Moyenne / jour</th><th>Sorties oubliées</th></tr></thead><tbody>
+      ${Object.values(byP).map(b=>`<tr><td><b>${h(nomOf(b.id))}</b></td><td class="c">${b.n}</td><td class="c"><b>${hm(b.min)}</b></td><td class="c">${b.n?hm(b.min/b.n):'—'}</td><td class="c" style="color:${b.open?'var(--bad)':'inherit'}">${b.open||'—'}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Aucun pointage ce mois.</td></tr>'}</tbody></table></div>
+    <div class="card tw" style="padding:0"><table><thead><tr><th colspan="6" style="text-align:left">🗂️ Historique · ${mLab(PTD.m)} (${PL.length})</th></tr><tr><th>Date</th><th>Heure</th><th style="text-align:left">Personnel</th><th>Type</th><th>Wi-Fi</th><th>Position</th></tr></thead><tbody>
+      ${PL.map(x=>`<tr><td class="c">${jourOf(ptKey(x.date)).slice(0,3)}. ${h(x.date)}</td><td class="c"><b>${h(String(x.heure).slice(0,5))}</b></td><td>${h(x.prenom+' '+x.nom)}</td><td class="c">${x.type==='Entrée'?badge('Entrée','b-ok'):badge('Sortie','b-info')}</td><td class="c small">${h(x.wifi||'—')}</td><td class="c small" title="${h(x.lat+', '+x.lng)}">${x.lat?'📍':'—'}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Aucun pointage.</td></tr>'}</tbody></table></div>
+    <div class="small muted">🔒 Mot de passe enregistré sur cet ordinateur · <a style="cursor:pointer;text-decoration:underline" onclick="PTK.set('');PTD.data=null;render()">se déconnecter du pointage</a></div>`;
+};
 VIEWS.notes = () => {
   setHead('Bloc-notes & tâches', isAdmin()?'Les tâches de chaque formateur (vous pouvez leur en donner) · votre bloc-notes personnel':'Vos tâches et votre bloc-notes personnel');
   const U = ntUser(), who = id => h(usr(id).nom||'?');
