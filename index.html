@@ -2789,14 +2789,14 @@ VIEWS.pointage = () => {
   const PS = pers.filter(p=>(p.actif || J.some(j=>j.id===String(p.id)&&j.d.startsWith(PTD.m))) && (!PTD.p || String(p.id)===PTD.p));
   const jOf = (id,d) => J.find(j=>j.id===String(id) && j.d===d);
   const isW = d => JT.includes(jourOf(d));
-  const cell = (id,d) => { const j=jOf(id,d); const bl='border-left:2px solid #cbd5e1;text-align:center;';
-    if(j){ const so=j.sor?j.sor.slice(0,5):(j.open&&d===today?'…':'<span style="color:var(--bad)">?</span>'); return `<td class="c" style="${bl}background:#dcfce7;font-weight:700;font-size:11px">${j.ent?j.ent.slice(0,5):'—'}</td><td class="c" style="background:#e0f2fe;font-weight:700;font-size:11px">${so}</td>`; }
-    if(!isW(d)) return `<td colspan="2" style="${bl}background:#f1f5f9"></td>`;
-    if(d<today) return `<td colspan="2" class="c" style="${bl}background:#fee2e2;color:var(--bad);font-weight:800">C</td>`;
-    return `<td colspan="2" style="${bl}"></td>`; };
+  const cell = (id,d) => { const j=jOf(id,d), st='text-align:center;border-left:1px solid #cbd5e1;white-space:nowrap;';
+    if(j){ const so=j.sor?j.sor.slice(0,5):(j.open&&d===today?'…':'<span style="color:var(--bad)">?</span>'); return `<td style="${st}background:#dcfce7;font-weight:700;font-size:11px">${j.ent?j.ent.slice(0,5):'—'} | ${so}</td>`; }
+    if(!isW(d)) return `<td style="${st}background:#f1f5f9"></td>`;
+    if(d<today) return `<td style="${st}background:#fee2e2;color:var(--bad);font-weight:800">C</td>`;
+    return `<td style="${st}"></td>`; };
   const stat = id => { const L=days.map(d=>jOf(id,d)).filter(Boolean); return {pres:L.length, min:sum(L,j=>j.min), oubli:L.filter(j=>j.open&&j.d!==today).length, conge:days.filter(d=>isW(d)&&d<today&&!jOf(id,d)).length}; };
   const rows = PS.map(p=>`<tr><td style="white-space:nowrap;border-right:2px solid var(--line);position:sticky;left:0;background:#fff;z-index:1"><b>${h(p.prenom+' '+p.nom)}</b>${p.actif?'':' <span class="small muted">(inactif)</span>'}</td>${days.map(d=>cell(p.id,d)).join('')}</tr>`).join('');
-  const foot = `<tr style="background:#f8fafc"><td style="position:sticky;left:0;background:#f8fafc;z-index:1"><b>TT présents</b></td>${days.map(d=>{ const n=PS.filter(p=>jOf(p.id,d)).length; return `<td colspan="2" class="c small" style="border-left:2px solid #cbd5e1;text-align:center"><b>${(isW(d)&&d<=today)||n?n+'/'+PS.length:''}</b></td>`; }).join('')}</tr>`;
+  const foot = `<tr style="background:#f8fafc"><td style="position:sticky;left:0;background:#f8fafc;z-index:1"><b>TT</b></td>${days.map(d=>{ const n=PS.filter(p=>jOf(p.id,d)).length; return `<td class="c small" style="border-left:1px solid #cbd5e1;text-align:center"><b>${(isW(d)&&d<=today)||n?n+'/'+PS.length:''}</b></td>`; }).join('')}</tr>`;
   const recap = `<div class="card tw" style="padding:0;max-width:760px"><table><thead><tr><th style="text-align:left">📊 Bilan ${mLab(PTD.m)}</th><th>Jours présents</th><th>Total heures</th><th>Sorties oubliées</th><th style="background:#b91c1c;color:#fff">Congés</th></tr></thead><tbody>
     ${PS.map(p=>{ const st=stat(p.id); return `<tr><td><b>${h(p.prenom+' '+p.nom)}</b></td><td class="c"><b>${st.pres}</b></td><td class="c"><b>${hm(st.min)}</b></td><td class="c" style="color:${st.oubli?'var(--bad)':'inherit'}">${st.oubli||'—'}</td><td class="c" style="background:#fee2e2;color:var(--bad);font-size:16px"><b>${st.conge}</b></td></tr>`; }).join('')}</tbody></table></div>`;
   return `<div class="card"><h3 style="margin-top:0">📍 Aujourd'hui · ${h(D.aujourdhui)} <span class="small muted">· mis à jour à ${PTD.at||''}</span></h3><div style="display:flex;flex-wrap:wrap;gap:10px">${todayCards||'<div class="small muted">Aucun personnel actif.</div>'}</div></div>
@@ -2805,11 +2805,11 @@ VIEWS.pointage = () => {
       <span class="small muted">Jours de travail :</span>${JOURS.map(j=>`<label class="small" style="display:flex;gap:3px;align-items:center"><input type="checkbox" ${JT.includes(j)?'checked':''} onchange="ptJT('${j}',this.checked)">${j.slice(0,3)}</label>`).join('')}
       <span class="sp"></span><span class="small muted">${P.length} pointage(s) dans le Google Sheet</span></div>
     <div class="card tw" style="padding:0;overflow:auto"><table class="ptable" style="font-size:12px"><thead>
-      <tr><th rowspan="2" style="text-align:left;min-width:150px;position:sticky;left:0;z-index:2">👤 Personnel</th>${days.map(d=>`<th colspan="2" class="dd ${d===today?'today':''}" style="border-left:2px solid #fff;${isW(d)?'':'opacity:.5'}">${jourOf(d).slice(0,2)} ${+d.slice(8)} ${MOIS_FR[+d.slice(5,7)-1]}</th>`).join('')}</tr>
-      <tr>${days.map(d=>`<th class="sl" style="border-left:2px solid #fff;${isW(d)?'':'opacity:.5'}">Entrée</th><th class="sl" style="${isW(d)?'':'opacity:.5'}">Sortie</th>`).join('')}</tr></thead>
-      <tbody>${rows||`<tr><td colspan="${days.length*2+1}" class="empty">Aucun personnel.</td></tr>`}${PS.length?foot:''}</tbody></table></div>
+      <tr><th rowspan="2" style="text-align:left;min-width:150px;position:sticky;left:0;z-index:2">👤 Personnel</th>${days.map(d=>`<th class="dd ${d===today?'today':''}" style="border-left:1px solid #fff;${isW(d)?'':'opacity:.5'}">${String(+d.slice(8)).padStart(2,'0')} ${MOIS_FR[+d.slice(5,7)-1]}</th>`).join('')}</tr>
+      <tr>${days.map(d=>`<th class="sl" style="border-left:1px solid #fff;white-space:nowrap;${isW(d)?'':'opacity:.5'}">Entrée | Sortie</th>`).join('')}</tr></thead>
+      <tbody>${rows||`<tr><td colspan="${days.length+1}" class="empty">Aucun personnel.</td></tr>`}${PS.length?foot:''}</tbody></table></div>
     ${PS.length?recap:''}
-    <div class="legend small"><span><i style="background:#dcfce7"></i>Entrée</span><span><i style="background:#e0f2fe"></i>Sortie</span><span><i style="background:#fee2e2"></i>C = congé (jour de travail sans pointage)</span><span><i style="background:#f1f5f9"></i>Jour non travaillé</span><span>? = sortie oubliée</span></div>
+    <div class="legend small"><span><i style="background:#dcfce7"></i>Présent : entrée | sortie</span><span><i style="background:#fee2e2"></i>C = congé (jour de travail sans pointage)</span><span><i style="background:#f1f5f9"></i>Jour non travaillé</span><span>? = sortie oubliée</span></div>
     <div class="small muted">🔒 Mot de passe enregistré sur cet ordinateur · <a style="cursor:pointer;text-decoration:underline" onclick="PTK.set('');PTD.data=null;render()">se déconnecter du pointage</a></div>`;
 };
 VIEWS.notes = () => {
