@@ -2763,6 +2763,7 @@ async function ptLoad(){ if(PTD.busy) return; const k=PTK.get(); if(!k){ render(
     if(!d.ok){ PTD.err=d.msg||'Erreur'; if(/refus/i.test(PTD.err)) PTK.set(''); } else { PTD.data=d; PTD.at=new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); } }
   catch(e){ PTD.err='Connexion impossible au script de pointage'; }
   PTD.busy=false; if(VIEW==='pointage') render(); }
+function ptJT(j,on){ S.pointage=S.pointage||{}; const L=new Set(S.pointage.jours||['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi']); on?L.add(j):L.delete(j); S.pointage.jours=JOURS.filter(x=>L.has(x)); render(); }
 function ptLogin(){ const v=$('#ptk').value.trim(); if(!v) return toast('Tapez le mot de passe'); PTK.set(v); ptLoad(); }
 const hm = min => { min=Math.round(min); return Math.floor(min/60)+'h'+String(min%60).padStart(2,'0'); };
 const tmin = t => { const [a,b]=String(t).split(':'); return (+a)*60+(+b||0); };
@@ -2782,18 +2783,32 @@ VIEWS.pointage = () => {
   const jT = J.filter(j=>j.d===today);
   const todayCards = pers.filter(p=>p.actif).map(p=>{ const j=jT.find(x=>x.id===String(p.id)); const st=!j?['Absent','#94a3b8','#f1f5f9']:j.open?['Présent','#16a34a','#dcfce7']:['Parti','#0284c7','#e0f2fe'];
     return `<div style="flex:1;min-width:170px;max-width:240px;background:${st[2]};border-left:5px solid ${st[1]};border-radius:12px;padding:10px 12px"><b>${h(p.prenom+' '+p.nom)}</b><div style="color:${st[1]};font-weight:800">${st[0]}</div><div class="small muted">${j?`Entrée ${j.ent.slice(0,5)}${j.sor?' · Sortie '+j.sor.slice(0,5):''}${j.min?' · '+hm(j.min):''}`:'pas encore pointé'}</div></div>`; }).join('');
-  const JM = J.filter(j=>j.d.startsWith(PTD.m) && (!PTD.p || j.id===PTD.p));
-  const byP = {}; JM.forEach(j=>{ (byP[j.id]=byP[j.id]||{id:j.id, n:0, min:0, open:0}); byP[j.id].n++; byP[j.id].min+=j.min; if(j.open&&j.d!==today) byP[j.id].open++; });
-  const PL = P.filter(x=>ptKey(x.date).startsWith(PTD.m) && (!PTD.p || String(x.id)===PTD.p)).sort((a,b)=>(ptKey(b.date)+b.heure).localeCompare(ptKey(a.date)+a.heure));
   const mLab = m => MOIS_L[+m.slice(5,7)-1].charAt(0)+MOIS_L[+m.slice(5,7)-1].slice(1).toLowerCase()+' '+m.slice(0,4);
+  const JT = (S.pointage&&S.pointage.jours) || ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const nbJ = new Date(+PTD.m.slice(0,4), +PTD.m.slice(5,7), 0).getDate(), days=[...Array(nbJ)].map((_,i)=>PTD.m+'-'+String(i+1).padStart(2,'0'));
+  const PS = pers.filter(p=>(p.actif || J.some(j=>j.id===String(p.id)&&j.d.startsWith(PTD.m))) && (!PTD.p || String(p.id)===PTD.p));
+  const jOf = (id,d) => J.find(j=>j.id===String(id) && j.d===d);
+  const isW = d => JT.includes(jourOf(d));
+  const cell = (id,d,k) => { const j=jOf(id,d); if(j){ const v=k==='e'?j.ent:j.sor; return `<td class="c" style="background:${k==='e'?'#dcfce7':'#e0f2fe'};font-weight:700;font-size:11px">${v?v.slice(0,5):(k==='s'&&j.open&&d===today?'…':'<span style="color:var(--bad)">?</span>')}</td>`; }
+    if(!isW(d)) return '<td style="background:#f1f5f9"></td>'; if(d<today) return k==='e'?`<td class="c" rowspan="2" style="background:#fee2e2;color:var(--bad);font-weight:800;font-size:11px">C</td>`:''; return '<td></td>'; };
+  const stat = id => { const L=days.map(d=>jOf(id,d)).filter(Boolean); return {pres:L.length, min:sum(L,j=>j.min), oubli:L.filter(j=>j.open&&j.d!==today).length, conge:days.filter(d=>isW(d)&&d<today&&!jOf(id,d)).length}; };
+  const rows = PS.map(p=>{ return `<tr><td rowspan="2" style="white-space:nowrap;border-right:2px solid var(--line)"><b>${h(p.prenom+' '+p.nom)}</b>${p.actif?'':' <span class="small muted">(inactif)</span>'}</td><td class="small" style="background:#dcfce7;font-weight:700">Entrée</td>${days.map(d=>cell(p.id,d,'e')).join('')}
+</tr>
+    <tr><td class="small" style="background:#e0f2fe;font-weight:700">Sortie</td>${days.map(d=>cell(p.id,d,'s')).join('')}</tr>`; }).join('');
+  const foot = `<tr style="background:#f8fafc"><td colspan="2"><b>Présents</b></td>${days.map(d=>{ const n=PS.filter(p=>jOf(p.id,d)).length; return `<td class="c small"><b>${(isW(d)&&d<=today)||n?n:''}</b></td>`; }).join('')}</tr>`;
+  const recap = `<div class="card tw" style="padding:0;max-width:760px"><table><thead><tr><th style="text-align:left">📊 Bilan ${mLab(PTD.m)}</th><th>Jours présents</th><th>Total heures</th><th>Sorties oubliées</th><th style="background:#b91c1c;color:#fff">Congés</th></tr></thead><tbody>
+    ${PS.map(p=>{ const st=stat(p.id); return `<tr><td><b>${h(p.prenom+' '+p.nom)}</b></td><td class="c"><b>${st.pres}</b></td><td class="c"><b>${hm(st.min)}</b></td><td class="c" style="color:${st.oubli?'var(--bad)':'inherit'}">${st.oubli||'—'}</td><td class="c" style="background:#fee2e2;color:var(--bad);font-size:16px"><b>${st.conge}</b></td></tr>`; }).join('')}</tbody></table></div>`;
   return `<div class="card"><h3 style="margin-top:0">📍 Aujourd'hui · ${h(D.aujourdhui)} <span class="small muted">· mis à jour à ${PTD.at||''}</span></h3><div style="display:flex;flex-wrap:wrap;gap:10px">${todayCards||'<div class="small muted">Aucun personnel actif.</div>'}</div></div>
-    <div class="toolbar"><select onchange="PTD.m=this.value;render()">${months.map(m=>`<option value="${m}" ${PTD.m===m?'selected':''}>${mLab(m)}</option>`).join('')||`<option>${mLab(PTD.m)}</option>`}</select>
+    <div class="toolbar"><select onchange="PTD.m=this.value;render()">${[...new Set([TODAY.slice(0,7),...months])].sort().reverse().map(m=>`<option value="${m}" ${PTD.m===m?'selected':''}>${mLab(m)}</option>`).join('')}</select>
       <select onchange="PTD.p=this.value;render()"><option value="">Tout le personnel</option>${pers.map(p=>`<option value="${h(String(p.id))}" ${PTD.p===String(p.id)?'selected':''}>${h(p.prenom+' '+p.nom)}${p.actif?'':' (inactif)'}</option>`).join('')}</select>
-      <span class="sp"></span><span class="small muted">${P.length} pointage(s) au total dans le Google Sheet</span></div>
-    <div class="card tw" style="padding:0"><table><thead><tr><th style="text-align:left">👤 Personnel</th><th>Jours pointés</th><th>Total heures</th><th>Moyenne / jour</th><th>Sorties oubliées</th></tr></thead><tbody>
-      ${Object.values(byP).map(b=>`<tr><td><b>${h(nomOf(b.id))}</b></td><td class="c">${b.n}</td><td class="c"><b>${hm(b.min)}</b></td><td class="c">${b.n?hm(b.min/b.n):'—'}</td><td class="c" style="color:${b.open?'var(--bad)':'inherit'}">${b.open||'—'}</td></tr>`).join('')||'<tr><td colspan="5" class="empty">Aucun pointage ce mois.</td></tr>'}</tbody></table></div>
-    <div class="card tw" style="padding:0"><table><thead><tr><th colspan="6" style="text-align:left">🗂️ Historique · ${mLab(PTD.m)} (${PL.length})</th></tr><tr><th>Date</th><th>Heure</th><th style="text-align:left">Personnel</th><th>Type</th><th>Wi-Fi</th><th>Position</th></tr></thead><tbody>
-      ${PL.map(x=>`<tr><td class="c">${jourOf(ptKey(x.date)).slice(0,3)}. ${h(x.date)}</td><td class="c"><b>${h(String(x.heure).slice(0,5))}</b></td><td>${h(x.prenom+' '+x.nom)}</td><td class="c">${x.type==='Entrée'?badge('Entrée','b-ok'):badge('Sortie','b-info')}</td><td class="c small">${h(x.wifi||'—')}</td><td class="c small" title="${h(x.lat+', '+x.lng)}">${x.lat?'📍':'—'}</td></tr>`).join('')||'<tr><td colspan="6" class="empty">Aucun pointage.</td></tr>'}</tbody></table></div>
+      <span class="small muted">Jours de travail :</span>${JOURS.map(j=>`<label class="small" style="display:flex;gap:3px;align-items:center"><input type="checkbox" ${JT.includes(j)?'checked':''} onchange="ptJT('${j}',this.checked)">${j.slice(0,3)}</label>`).join('')}
+      <span class="sp"></span><span class="small muted">${P.length} pointage(s) dans le Google Sheet</span></div>
+    <div class="card tw" style="padding:0;overflow:auto"><table class="ptable" style="font-size:12px"><thead>
+      <tr><th rowspan="2" style="text-align:left;min-width:150px">👤 Personnel</th><th rowspan="2"></th>${days.map(d=>`<th class="dd ${d===today?'today':''}" style="${isW(d)?'':'opacity:.5'}">${+d.slice(8)}</th>`).join('')}</tr>
+      <tr>${days.map(d=>`<th class="sl" style="${isW(d)?'':'opacity:.5'}">${jourOf(d).slice(0,2)}</th>`).join('')}</tr></thead>
+      <tbody>${rows||`<tr><td colspan="${days.length+2}" class="empty">Aucun personnel.</td></tr>`}${PS.length?foot:''}</tbody></table></div>
+    ${PS.length?recap:''}
+    <div class="legend small"><span><i style="background:#dcfce7"></i>Entrée</span><span><i style="background:#e0f2fe"></i>Sortie</span><span><i style="background:#fee2e2"></i>C = congé (jour de travail sans pointage)</span><span><i style="background:#f1f5f9"></i>Jour non travaillé</span><span>? = sortie oubliée</span></div>
     <div class="small muted">🔒 Mot de passe enregistré sur cet ordinateur · <a style="cursor:pointer;text-decoration:underline" onclick="PTK.set('');PTD.data=null;render()">se déconnecter du pointage</a></div>`;
 };
 VIEWS.notes = () => {
