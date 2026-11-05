@@ -652,14 +652,14 @@ function applyCleanup2(){
 }
 
 /* ===== Années scolaires ===== */
-const YEAR_KEYS = ['eleves','groupes','tx','caisse','seances','competitions','feries','objectif','masterclasses','rattrapages'];
+const YEAR_KEYS = ['eleves','groupes','tx','caisse','seances','competitions','feries','objectif','masterclasses','rattrapages','cplan'];
 const pickYear_ = () => { const o={}; YEAR_KEYS.forEach(k=>o[k]=S[k]); return o; };
 const allYears = () => [...new Set([S.annee, ...Object.keys(S.years).map(Number)])].sort((a,b)=>a-b);
 function anSelFill(){ const el=document.getElementById('ansel'); if(!el) return;
   el.innerHTML = allYears().map(y=>`<option value="${y}" ${y===S.annee?'selected':''}>${anLabel(y)}</option>`).join('') + (isAdmin()?'<option value="new">➕ Nouvelle année…</option>':''); }
 function pickYear(sel){ if(sel.value==='new'){ anSelFill(); return newYear(); } switchYear(+sel.value); }
 function switchYear(y){ y=+y; if(y===S.annee) return; if(!S.years[y]) return toast('Année introuvable');
-  syncTick(); S.years[S.annee]=pickYear_(); Object.assign(S, S.years[y]); delete S.years[y]; S.annee=y; setYearDates(y);
+  syncTick(); S.years[S.annee]=pickYear_(); Object.assign(S, {cplan:[]}, S.years[y]); delete S.years[y]; S.annee=y; setYearDates(y);
   SYNC.base=null; F_PT_reset(); go(VIEW); toast('Année '+anLabel(y)+' ouverte'); }
 function F_PT_reset(){ try{ if(typeof F_PT==='object'){ F_PT.trim=''; } }catch(e){} }
 function newYear(){
@@ -683,7 +683,7 @@ function newYear(){
     const sh = d => d.replace(/^(\d{4})/, m=>+m+1);
     const feries = fd.fe==='oui' ? src.feries.map(f=>({...f, debut:sh(f.debut), fin:sh(f.fin), label: (f.type==='VACANCES'||/estim|à vérifier/i.test(f.label)) && !/à vérifier/.test(f.label) ? f.label.replace(/\s*\(date estimée\)/,'')+' (à vérifier)' : f.label})) : [];
     syncTick(); S.years[S.annee]=pickYear_();
-    Object.assign(S, {eleves, groupes, tx:[], caisse:[], seances:[], competitions:[], masterclasses:undefined, feries, objectif:{min:+fd.min||0, max:+fd.max||0}});
+    Object.assign(S, {eleves, groupes, tx:[], caisse:[], seances:[], competitions:[], cplan:[], masterclasses:undefined, feries, objectif:{min:+fd.min||0, max:+fd.max||0}});
     S.annee=y; setYearDates(y); SYNC.base=null; F_PT_reset();
     setTimeout(()=>{ go('eleves'); toast('Année '+anLabel(y)+' créée ✔ – '+eleves.length+' élève(s) repris'); },0);
   });
@@ -2331,9 +2331,10 @@ VIEWS.competitions = () => {
   setHead('Compétitions & événements', 'Participants, rôles et prix obtenus', canEdit()?`<button class="hb" onclick="editComp()">+ Compétition</button>`:'');
   const list = [...S.competitions].sort((a,b)=>a.date.localeCompare(b.date));
   const compet = S.eleves.filter(e=>S.tx.some(x=>x.eleve===e.id&&x.col==='comp'));
-  const tabs=`<div class="tabs"><button class="${F_CP.v!=='bilan'?'on':''}" onclick="F_CP.v='';render()">📋 Compétitions & participants</button><button class="${F_CP.v==='bilan'?'on':''}" onclick="F_CP.v='bilan';render()">📊 Bilan</button></div>`;
-  if(!isAdmin()) F_CP.v='';
-  if(F_CP.v!=='bilan') return (isAdmin()?tabs:'') + palmares(list);
+  const tabs=`<div class="tabs"><button class="${!F_CP.v?'on':''}" onclick="F_CP.v='';render()">📋 Compétitions & participants</button><button class="${F_CP.v==='plan'?'on':''}" onclick="F_CP.v='plan';render()">🗓️ Planning compétiteurs</button>${isAdmin()?`<button class="${F_CP.v==='bilan'?'on':''}" onclick="F_CP.v='bilan';render()">📊 Bilan</button>`:''}</div>`;
+  if(!isAdmin() && F_CP.v==='bilan') F_CP.v='';
+  if(F_CP.v==='plan') return tabs + compPlan();
+  if(F_CP.v!=='bilan') return tabs + palmares(list);
   return tabs + `${compet.length?`<div class="alert info small">🏅 Compétiteurs ayant payé la colonne « Compétiteurs » (T1) : ${compet.map(e=>h(e.nom)).join(', ')}</div>`:''}
   ${list.map(c=>{ const parts=compParts(c); const rec=sum(parts,id=>compPaye(c.id,id)); const deps=S.caisse.filter(x=>x.refComp===c.id&&x.sens==='out').sort((a,b)=>a.date.localeCompare(b.date)); const dep=sum(deps,d=>d.montant);
     const j=Math.round((new Date(c.date)-new Date(TODAY))/864e5);
@@ -2610,6 +2611,61 @@ function compRecette(cid,id){
     const lib=`${c.nom} – ${fd.libelle}`; if(x0) Object.assign(x0,fd,{libelle:lib}); else S.caisse.push({id:uid('c'), compte:'competition', sens:'in', cat:'Autre recette', refComp:cid, ...fd, libelle:lib}); });
 }
 function setEq(cid,qi,k,v){ comp(cid).equipes[qi][k]=v.trim(); render(); toast('Enregistré ✔'); }
+/* ===================== PLANNING COMPÉTITEURS (par semaine : compétition, projet, enfants) ===================== */
+const CPL = () => S.cplan || (S.cplan=[]);
+const lundiOf = d => { let x=d; while(jourOf(x)!=='Lundi') x=addDays(x,-1); return x; };
+const fmtDM = d => fmtD(d).slice(0,5);
+const compCands = () => { const ids=new Set(); S.groupes.filter(g=>g.compet).forEach(g=>S.eleves.forEach(e=>{ if(inG(e,g.id)) ids.add(e.id); })); S.eleves.forEach(e=>{ if(isCompetiteur(e)) ids.add(e.id); }); S.competitions.forEach(c=>compParts(c).forEach(id=>ids.add(id)));
+  return [...ids].map(elv).filter(e=>e && e.statut!=='Abandon').sort((a,b)=>a.nom.localeCompare(b.nom)); };
+function compPlan(){
+  const cur=lundiOf(TODAY), first=lundiOf(ANNEE.debut), weeks=[]; for(let w=first; w<=ANNEE.fin; w=addDays(w,7)) weeks.push(w);
+  const shown = F_CP.all ? weeks : weeks.filter(w=>w>=addDays(cur,-7) && w<=addDays(cur,7*8));
+  const cg = sortGroups(S.groupes.filter(g=>g.compet));
+  const nbE = new Set(CPL().flatMap(x=>x.eleves)).size;
+  return `<div class="toolbar"><span class="small muted">Pour chaque semaine : la compétition préparée, le projet / robot travaillé et les enfants qui y travaillent.</span><span class="sp"></span>
+      <button class="btn sm g" onclick="F_CP.all=!F_CP.all;render()">${F_CP.all?'🔎 Semaines proches seulement':'📅 Toute l\'année'}</button></div>
+    ${shown.map(w=>{ const fin=addDays(w,6), L=CPL().filter(x=>x.semaine===w), isCur=w===cur;
+      const seances = cg.map(g=>{ const d=addDays(w,JOURS.indexOf(g.jour)); const f=ferieOf(d); return `<span class="badge ${f?'b-mut':'b-pur'}" title="${f?h(f.label):''}">${g.jour} ${fmtDM(d)} · ${h(g.horaire)}${f?' · '+(f.type==='VACANCES'?'vacances':'férié'):''}</span>`; }).join(' ');
+      const comps = S.competitions.filter(c=>c.date>=w && c.date<=fin);
+      return `<div class="card" style="margin-bottom:12px;${isCur?'border:2px solid var(--orange);':''}">
+        <div class="toolbar" style="margin-bottom:8px;flex-wrap:wrap;gap:8px"><h3 style="margin:0">🗓️ Semaine du ${fmtDM(w)} au ${fmtD(fin)}${isCur?' <span class="badge b-warn">cette semaine</span>':''}</h3>${seances}
+          ${comps.map(c=>`<span class="badge b-bad">🏆 ${h(c.nom)} le ${fmtDM(c.date)}</span>`).join(' ')}<span class="sp"></span>
+          ${canEdit()?`${!L.length&&CPL().some(x=>x.semaine===addDays(w,-7))?`<button class="btn sm g" onclick="cplCopy('${w}')">⧉ Copier la semaine d'avant</button>`:''}<button class="btn sm o" onclick="editCPL('${w}')">+ Ajouter</button>`:''}</div>
+        ${L.length?`<div class="tw"><table><thead><tr><th style="text-align:left">🏆 Compétition</th><th style="text-align:left">🔧 Projet / robot</th><th style="text-align:left">👥 Enfants</th><th style="text-align:left">📝 Remarques</th>${canEdit()?'<th></th>':''}</tr></thead><tbody>
+          ${L.map(x=>{ const c=comp(x.comp); return `<tr><td><b>${c?h(c.nom):h(x.compLib||'Entraînement')}</b>${c?`<div class="small muted">${fmtD(c.date)}</div>`:''}</td><td><b>${h(x.projet||'—')}</b></td>
+            <td><div class="small muted">${x.eleves.length} enfant(s)</div>${x.eleves.map(id=>`<span class="badge b-info" style="margin:2px 2px 0 0">${h(elv(id)?.nom||'?')}</span>`).join('')}</td>
+            <td class="small">${h(x.notes||'')}</td>${canEdit()?`<td style="white-space:nowrap"><button class="btn sm g" onclick="editCPL('${w}','${x.id}')">✏️</button> <button class="btn sm r" onclick="delCPL('${x.id}')">🗑</button></td>`:''}</tr>`; }).join('')}
+          </tbody></table></div>`:`<div class="small muted">Rien de prévu pour cette semaine.</div>`}
+      </div>`; }).join('')}
+    <div class="small muted">${CPL().length} activité(s) planifiée(s) · ${nbE} enfant(s) concerné(s) dans l'année.</div>`;
+}
+function editCPL(w, id){
+  const x = id ? CPL().find(y=>y.id===id) : {semaine:w, comp:'', compLib:'', projet:'', notes:'', eleves:[]};
+  const cands = compCands(), sel=new Set(x.eleves), autres=S.eleves.filter(e=>e.statut!=='Abandon' && !cands.includes(e)).sort((a,b)=>a.nom.localeCompare(b.nom));
+  const projets=[...new Set(CPL().map(y=>y.projet).concat(S.competitions.flatMap(c=>c.equipes.map(q=>q.robot))).filter(Boolean))];
+  const row = e => `<label style="display:flex;gap:8px;padding:4px 0"><input type="checkbox" class="cplc" value="${e.id}" ${sel.has(e.id)?'checked':''}> ${h(e.nom)} <span class="muted small">– ${h(e.jour||'')} · ${h(e.niveau||'')}</span></label>`;
+  openModal(mHead((id?'Modifier':'Ajouter')+' · semaine du '+fmtDM(w)) + `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      <label class="small muted" style="font-weight:600">🏆 Compétition<select id="cplcomp" style="width:100%" onchange="document.getElementById('cpllibw').style.display=this.value?'none':''"><option value="">— Entraînement / autre —</option>${[...S.competitions].sort((a,b)=>a.date.localeCompare(b.date)).map(c=>`<option value="${c.id}" ${x.comp===c.id?'selected':''}>${h(c.nom)} – ${fmtD(c.date)}</option>`).join('')}</select></label>
+      <label id="cpllibw" class="small muted" style="font-weight:600;${x.comp?'display:none':''}">Nom (si pas dans la liste)<input id="cpllib" style="width:100%" value="${h(x.compLib||'')}" placeholder="ex : Eurobot Junior, entraînement…"></label>
+      <label class="small muted" style="font-weight:600;grid-column:1/-1">🔧 Projet / robot travaillé<input id="cplproj" list="dl-cplp" style="width:100%" value="${h(x.projet||'')}" placeholder="ex : Robot sumo – réglage capteurs, suiveur de ligne PID…"><datalist id="dl-cplp">${projets.map(p=>`<option value="${h(p)}">`).join('')}</datalist></label>
+      <label class="small muted" style="font-weight:600;grid-column:1/-1">📝 Remarques<input id="cplnotes" style="width:100%" value="${h(x.notes||'')}" placeholder="ex : test sur la piste, apporter les batteries…"></label></div>
+    <div class="toolbar" style="margin-bottom:6px"><b class="small">👥 Enfants (${cands.length} compétiteurs)</b><span class="sp"></span>
+      <button class="btn sm g" onclick="const c=comp(document.getElementById('cplcomp').value); if(!c) return toast('Choisissez d\\'abord la compétition'); const ids=compParts(c); document.querySelectorAll('.cplc').forEach(b=>{ if(ids.includes(b.value)) b.checked=true; })">+ Participants de la compétition</button>
+      <button class="btn sm g" onclick="document.querySelectorAll('#cplcands .cplc').forEach(b=>b.checked=true)">Tous</button><button class="btn sm g" onclick="document.querySelectorAll('.cplc').forEach(b=>b.checked=false)">Aucun</button></div>
+    <div style="max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px">
+      <div id="cplcands">${cands.map(row).join('')||'<div class="small muted">Aucun compétiteur trouvé.</div>'}</div>
+      <details ${autres.some(e=>sel.has(e.id))?'open':''} style="margin-top:6px"><summary class="small" style="cursor:pointer;font-weight:600">Autres élèves (${autres.length})</summary>${autres.map(row).join('')}</details></div>
+    <div class="mfoot">${id?`<button class="btn r" style="margin-right:auto" onclick="delCPL('${id}')">Supprimer</button>`:''}<button class="btn g" onclick="closeModal()">Annuler</button><button class="btn" onclick="saveCPL('${w}',${id?`'${id}'`:'null'})">Enregistrer</button></div>`, true);
+}
+function saveCPL(w, id){
+  const v = {semaine:w, comp:$('#cplcomp').value, compLib:$('#cplcomp').value?'':$('#cpllib').value.trim(), projet:$('#cplproj').value.trim(), notes:$('#cplnotes').value.trim(), eleves:[...new Set([...document.querySelectorAll('.cplc:checked')].map(b=>b.value))]};
+  if(!v.comp && !v.compLib && !v.projet) return toast('Indiquez au moins la compétition ou le projet');
+  if(id) Object.assign(CPL().find(y=>y.id===id), v); else CPL().push({id:uid('cp'), ...v});
+  closeModal(); render(); toast('Planning enregistré ✔');
+}
+function delCPL(id){ if(!confirm('Supprimer cette ligne du planning ?')) return; S.cplan=CPL().filter(y=>y.id!==id); closeModal(); render(); }
+function cplCopy(w){ const prev=CPL().filter(x=>x.semaine===addDays(w,-7)); prev.forEach(x=>CPL().push({...x, id:uid('cp'), semaine:w, eleves:[...x.eleves]})); render(); toast(prev.length+' ligne(s) copiée(s) ✔'); }
 function editComp(id){
   const c = id ? comp(id) : {date:addDays(TODAY,30), frais:0};
   formModal(id?'Modifier la compétition':'Nouvelle compétition', [
