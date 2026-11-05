@@ -2614,8 +2614,8 @@ function setEq(cid,qi,k,v){ comp(cid).equipes[qi][k]=v.trim(); render(); toast('
 let F_CPT={v:'plan', all:false};
 VIEWS.competiteurs = () => {
   const cands = compCands();
-  setHead('Compétiteurs', `${cands.length} enfant(s) · planning de chaque semaine : compétition, projet et enfants`, canEdit()?`<button class="hb" onclick="editCPL(lundiOf(TODAY))">+ Planning cette semaine</button>`:'');
-  const tabs=`<div class="tabs"><button class="${F_CPT.v==='plan'?'on':''}" onclick="F_CPT.v='plan';render()">🗓️ Planning par semaine</button><button class="${F_CPT.v==='liste'?'on':''}" onclick="F_CPT.v='liste';render()">👥 Liste des compétiteurs</button></div>`;
+  setHead('Compétiteurs', `${cands.length} enfant(s) · chaque séance : le jour, ce qu'ils ont fait et les enfants`, '');
+  const tabs=`<div class="tabs"><button class="${F_CPT.v==='plan'?'on':''}" onclick="F_CPT.v='plan';render()">🗓️ Planning (séances)</button><button class="${F_CPT.v==='liste'?'on':''}" onclick="F_CPT.v='liste';render()">👥 Liste des compétiteurs</button></div>`;
   if(F_CPT.v==='plan') return tabs + compPlan();
   const cg = S.groupes.filter(g=>g.compet).map(g=>g.id);
   const cur = lundiOf(TODAY);
@@ -2634,52 +2634,58 @@ const CPL = () => S.cplan || (S.cplan=[]);
 const lundiOf = d => { let x=d; while(jourOf(x)!=='Lundi') x=addDays(x,-1); return x; };
 const fmtDM = d => fmtD(d).slice(0,5);
 const compCands = () => { const cg=sortGroups(S.groupes.filter(g=>g.compet)), out=[]; cg.forEach(g=>S.eleves.filter(e=>inG(e,g.id) && e.statut!=='Abandon').sort((a,b)=>a.nom.localeCompare(b.nom)).forEach(e=>{ if(!out.includes(e)) out.push(e); })); return out; };
+const cplD = x => x.date || x.semaine;
+let F_CPJ={comp:'', sel:null};
 function compPlan(){
-  const cur=lundiOf(TODAY), first=lundiOf(ANNEE.debut), weeks=[]; for(let w=first; w<=ANNEE.fin; w=addDays(w,7)) weeks.push(w);
-  const shown = F_CPT.all ? weeks : weeks.filter(w=>w>=addDays(cur,-7) && w<=addDays(cur,7*8));
-  const cg = sortGroups(S.groupes.filter(g=>g.compet));
-  const nbE = new Set(CPL().flatMap(x=>x.eleves)).size;
-  return `<div class="toolbar"><span class="small muted">Pour chaque semaine : la compétition préparée, le projet / robot travaillé et les enfants qui y travaillent.</span><span class="sp"></span>
-      <button class="btn sm g" onclick="F_CPT.all=!F_CPT.all;render()">${F_CPT.all?'🔎 Semaines proches seulement':'📅 Toute l\'année'}</button></div>
-    ${shown.map(w=>{ const fin=addDays(w,6), L=CPL().filter(x=>x.semaine===w), isCur=w===cur;
-      const seances = cg.map(g=>{ const d=addDays(w,JOURS.indexOf(g.jour)); const f=ferieOf(d); return `<span class="badge ${f?'b-mut':'b-pur'}" title="${f?h(f.label):''}">${g.jour} ${fmtDM(d)} · ${h(g.horaire)}${f?' · '+(f.type==='VACANCES'?'vacances':'férié'):''}</span>`; }).join(' ');
-      const comps = S.competitions.filter(c=>c.date>=w && c.date<=fin);
-      return `<div class="card" style="margin-bottom:12px;${isCur?'border:2px solid var(--orange);':''}">
-        <div class="toolbar" style="margin-bottom:8px;flex-wrap:wrap;gap:8px"><h3 style="margin:0">🗓️ Semaine du ${fmtDM(w)} au ${fmtD(fin)}${isCur?' <span class="badge b-warn">cette semaine</span>':''}</h3>${seances}
-          ${comps.map(c=>`<span class="badge b-bad">🏆 ${h(c.nom)} le ${fmtDM(c.date)}</span>`).join(' ')}<span class="sp"></span>
-          ${canEdit()?`${!L.length&&CPL().some(x=>x.semaine===addDays(w,-7))?`<button class="btn sm g" onclick="cplCopy('${w}')">⧉ Copier la semaine d'avant</button>`:''}<button class="btn sm o" onclick="editCPL('${w}')">+ Ajouter</button>`:''}</div>
-        ${L.length?`<div class="tw"><table><thead><tr><th style="text-align:left">🏆 Compétition</th><th style="text-align:left">🔧 Projet / robot</th><th style="text-align:left">👥 Enfants</th><th style="text-align:left">📝 Remarques</th>${canEdit()?'<th></th>':''}</tr></thead><tbody>
-          ${L.map(x=>{ const c=comp(x.comp); return `<tr><td><b>${c?h(c.nom):h(x.compLib||'Entraînement')}</b>${c?`<div class="small muted">${fmtD(c.date)}</div>`:''}</td><td><b>${h(x.projet||'—')}</b></td>
-            <td><div class="small muted">${x.eleves.length} enfant(s)</div>${x.eleves.map(id=>`<span class="badge b-info" style="margin:2px 2px 0 0">${h(elv(id)?.nom||'?')}</span>`).join('')}</td>
-            <td class="small">${h(x.notes||'')}</td>${canEdit()?`<td style="white-space:nowrap"><button class="btn sm g" onclick="editCPL('${w}','${x.id}')">✏️</button> <button class="btn sm r" onclick="delCPL('${x.id}')">🗑</button></td>`:''}</tr>`; }).join('')}
-          </tbody></table></div>`:`<div class="small muted">Rien de prévu pour cette semaine.</div>`}
-      </div>`; }).join('')}
-    <div class="small muted">${CPL().length} activité(s) planifiée(s) · ${nbE} enfant(s) concerné(s) dans l'année.</div>`;
-}
-function editCPL(w, id){
-  const x = id ? CPL().find(y=>y.id===id) : {semaine:w, comp:'', compLib:'', projet:'', notes:'', eleves:[]};
-  const cands = compCands(), sel=new Set(x.eleves), autres=S.eleves.filter(e=>e.statut!=='Abandon' && !cands.includes(e)).sort((a,b)=>a.nom.localeCompare(b.nom));
+  const cands = compCands(); if(!F_CPJ.sel) F_CPJ.sel=new Set();
+  const comps=[...S.competitions].sort((a,b)=>a.date.localeCompare(b.date));
   const projets=[...new Set(CPL().map(y=>y.projet).concat(S.competitions.flatMap(c=>c.equipes.map(q=>q.robot))).filter(Boolean))];
-  const row = e => `<label style="display:flex;gap:8px;padding:4px 0"><input type="checkbox" class="cplc" value="${e.id}" ${sel.has(e.id)?'checked':''}> ${h(e.nom)} <span class="muted small">– ${h(e.jour||'')} · ${h(e.niveau||'')}</span></label>`;
-  openModal(mHead((id?'Modifier':'Ajouter')+' · semaine du '+fmtDM(w)) + `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-      <label class="small muted" style="font-weight:600">🏆 Compétition<select id="cplcomp" style="width:100%" onchange="document.getElementById('cpllibw').style.display=this.value?'none':''"><option value="">— Entraînement / autre —</option>${[...S.competitions].sort((a,b)=>a.date.localeCompare(b.date)).map(c=>`<option value="${c.id}" ${x.comp===c.id?'selected':''}>${h(c.nom)} – ${fmtD(c.date)}</option>`).join('')}</select></label>
-      <label id="cpllibw" class="small muted" style="font-weight:600;${x.comp?'display:none':''}">Nom (si pas dans la liste)<input id="cpllib" style="width:100%" value="${h(x.compLib||'')}" placeholder="ex : Eurobot Junior, entraînement…"></label>
-      <label class="small muted" style="font-weight:600;grid-column:1/-1">🔧 Projet / robot travaillé<input id="cplproj" list="dl-cplp" style="width:100%" value="${h(x.projet||'')}" placeholder="ex : Robot sumo – réglage capteurs, suiveur de ligne PID…"><datalist id="dl-cplp">${projets.map(p=>`<option value="${h(p)}">`).join('')}</datalist></label>
-      <label class="small muted" style="font-weight:600;grid-column:1/-1">📝 Remarques<input id="cplnotes" style="width:100%" value="${h(x.notes||'')}" placeholder="ex : test sur la piste, apporter les batteries…"></label></div>
-    <div class="toolbar" style="margin-bottom:6px"><b class="small">👥 Enfants (${cands.length} compétiteurs)</b><span class="sp"></span>
-      <button class="btn sm g" onclick="const c=comp(document.getElementById('cplcomp').value); if(!c) return toast('Choisissez d\\'abord la compétition'); const ids=compParts(c); document.querySelectorAll('.cplc').forEach(b=>{ if(ids.includes(b.value)) b.checked=true; })">+ Participants de la compétition</button>
-      <button class="btn sm g" onclick="document.querySelectorAll('#cplcands .cplc').forEach(b=>b.checked=true)">Tous</button><button class="btn sm g" onclick="document.querySelectorAll('.cplc').forEach(b=>b.checked=false)">Aucun</button></div>
+  const L = CPL().filter(x=>!F_CPJ.comp || x.comp===F_CPJ.comp).sort((a,b)=>cplD(b).localeCompare(cplD(a)));
+  const chip = (e,on) => `<button type="button" class="btn sm ${on?'':'g'}" style="margin:2px" onclick="cpjTog('${e.id}')">${on?'✔ ':''}${h(e.nom)}</button>`;
+  return `${canEdit()?`<div class="card"><h3 style="margin-top:0">✍️ Nouvelle séance compétiteurs</h3>
+      <div style="display:grid;grid-template-columns:160px 1fr 1fr;gap:8px">
+        <label class="small muted" style="font-weight:600">📅 Jour<input id="cpjD" type="date" value="${TODAY}" style="width:100%"></label>
+        <label class="small muted" style="font-weight:600">🏆 Compétition<select id="cpjC" style="width:100%"><option value="">— Entraînement / autre —</option>${comps.map(c=>`<option value="${c.id}">${h(c.nom)} – ${fmtD(c.date)}</option>`).join('')}</select></label>
+        <label class="small muted" style="font-weight:600">🔧 Projet / robot<input id="cpjP" list="dl-cpjp" style="width:100%" placeholder="ex : Robot sumo, suiveur de ligne…"><datalist id="dl-cpjp">${projets.map(p=>`<option value="${h(p)}">`).join('')}</datalist></label></div>
+      <label class="small muted" style="font-weight:600;display:block;margin-top:8px">📝 Ce qu'ils ont fait<textarea id="cpjT" rows="3" style="width:100%" placeholder="ex : montage du châssis, test des capteurs sur la piste, réglage PID…"></textarea></label>
+      <div class="toolbar" style="margin:8px 0 4px"><b class="small">👥 Enfants présents (${F_CPJ.sel.size}/${cands.length})</b><span class="sp"></span><button class="btn sm g" onclick="F_CPJ.sel=new Set(compCands().map(e=>e.id));cpjKeep()">Tous</button><button class="btn sm g" onclick="F_CPJ.sel=new Set();cpjKeep()">Aucun</button></div>
+      <div>${cands.map(e=>chip(e,F_CPJ.sel.has(e.id))).join('')||'<span class="small muted">Aucun enfant dans le groupe Compétiteurs.</span>'}</div>
+      <div class="toolbar" style="margin-top:8px"><span class="sp"></span><button class="btn o" onclick="cpjAdd()">+ Ajouter</button></div></div>`:''}
+    <div class="toolbar"><select onchange="F_CPJ.comp=this.value;render()"><option value="">Toutes les compétitions</option>${comps.map(c=>`<option value="${c.id}" ${F_CPJ.comp===c.id?'selected':''}>${h(c.nom)}</option>`).join('')}</select><span class="sp"></span><span class="small muted">${L.length} séance(s)</span></div>
+    ${L.map(x=>{ const c=comp(x.comp), d=cplD(x); return `<div class="card" style="margin-bottom:10px;border-left:5px solid var(--purple)">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center"><b>📅 ${jourOf(d)} ${fmtD(d)}</b>${c?`<span class="badge b-bad">🏆 ${h(c.nom)}</span>`:x.compLib?`<span class="badge b-mut">${h(x.compLib)}</span>`:''}${x.projet?`<span class="badge b-pur">🔧 ${h(x.projet)}</span>`:''}
+        <span class="sp" style="flex:1"></span>${canEdit()?`<button class="btn sm g" onclick="editCPL('${d}','${x.id}')">✏️</button> <button class="btn sm r" onclick="delCPL('${x.id}')">🗑</button>`:''}</div>
+      ${x.notes?`<div style="margin:8px 0;white-space:pre-wrap">${h(x.notes)}</div>`:''}
+      <div class="small muted" style="margin-top:4px">👥 ${x.eleves.length} enfant(s) : ${x.eleves.map(id=>`<span class="badge b-info" style="margin:2px 2px 0 0">${h(elv(id)?.nom||'?')}</span>`).join('')||'—'}</div></div>`; }).join('')||'<div class="card empty">Aucune séance notée pour le moment.</div>'}`;
+}
+function cpjKeep(){ const v={d:$('#cpjD')?.value, c:$('#cpjC')?.value, p:$('#cpjP')?.value, t:$('#cpjT')?.value}; render(); if($('#cpjD')){ $('#cpjD').value=v.d; $('#cpjC').value=v.c; $('#cpjP').value=v.p; $('#cpjT').value=v.t; } }
+function cpjTog(id){ F_CPJ.sel.has(id)?F_CPJ.sel.delete(id):F_CPJ.sel.add(id); cpjKeep(); }
+function cpjAdd(){ const d=$('#cpjD').value||TODAY, c=$('#cpjC').value, p=$('#cpjP').value.trim(), t=$('#cpjT').value.trim();
+  if(!c && !p && !t) return toast('Écrivez ce qu\'ils ont fait ou le projet');
+  CPL().push({id:uid('cp'), date:d, semaine:lundiOf(d), comp:c, compLib:'', projet:p, notes:t, eleves:[...F_CPJ.sel]}); F_CPJ.sel=new Set(); render(); toast('Séance ajoutée ✔'); }
+function editCPL(w, id){
+  const x = id ? CPL().find(y=>y.id===id) : {date:w, comp:'', compLib:'', projet:'', notes:'', eleves:[]};
+  const d = cplD(x)||w;
+  const cands = compCands(), sel=new Set(x.eleves), autres=S.eleves.filter(e=>e.statut!=='Abandon' && !cands.includes(e)).sort((a,b)=>a.nom.localeCompare(b.nom));
+  const row = e => `<label style="display:flex;gap:8px;padding:4px 0"><input type="checkbox" class="cplc" value="${e.id}" ${sel.has(e.id)?'checked':''}> ${h(e.nom)} <span class="muted small">– ${h(e.niveau||'')}</span></label>`;
+  openModal(mHead(id?'Modifier la séance':'Nouvelle séance') + `
+    <div style="display:grid;grid-template-columns:160px 1fr;gap:8px;margin-bottom:10px">
+      <label class="small muted" style="font-weight:600">📅 Jour<input id="cpldate" type="date" style="width:100%" value="${d}"></label>
+      <label class="small muted" style="font-weight:600">🏆 Compétition<select id="cplcomp" style="width:100%"><option value="">— Entraînement / autre —</option>${[...S.competitions].sort((a,b)=>a.date.localeCompare(b.date)).map(c=>`<option value="${c.id}" ${x.comp===c.id?'selected':''}>${h(c.nom)} – ${fmtD(c.date)}</option>`).join('')}</select></label>
+      <label class="small muted" style="font-weight:600;grid-column:1/-1">🔧 Projet / robot<input id="cplproj" style="width:100%" value="${h(x.projet||'')}"></label>
+      <label class="small muted" style="font-weight:600;grid-column:1/-1">📝 Ce qu'ils ont fait<textarea id="cplnotes" rows="3" style="width:100%">${h(x.notes||'')}</textarea></label></div>
+    <div class="toolbar" style="margin-bottom:6px"><b class="small">👥 Enfants</b><span class="sp"></span><button class="btn sm g" onclick="document.querySelectorAll('#cplcands .cplc').forEach(b=>b.checked=true)">Tous</button><button class="btn sm g" onclick="document.querySelectorAll('.cplc').forEach(b=>b.checked=false)">Aucun</button></div>
     <div style="max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:6px 10px">
-      <div id="cplcands">${cands.map(row).join('')||'<div class="small muted">Aucun compétiteur trouvé.</div>'}</div>
+      <div id="cplcands">${cands.map(row).join('')}</div>
       <details ${autres.some(e=>sel.has(e.id))?'open':''} style="margin-top:6px"><summary class="small" style="cursor:pointer;font-weight:600">Autres élèves (${autres.length})</summary>${autres.map(row).join('')}</details></div>
-    <div class="mfoot">${id?`<button class="btn r" style="margin-right:auto" onclick="delCPL('${id}')">Supprimer</button>`:''}<button class="btn g" onclick="closeModal()">Annuler</button><button class="btn" onclick="saveCPL('${w}',${id?`'${id}'`:'null'})">Enregistrer</button></div>`, true);
+    <div class="mfoot">${id?`<button class="btn r" style="margin-right:auto" onclick="delCPL('${id}')">Supprimer</button>`:''}<button class="btn g" onclick="closeModal()">Annuler</button><button class="btn" onclick="saveCPL(null,${id?`'${id}'`:'null'})">Enregistrer</button></div>`, true);
 }
 function saveCPL(w, id){
-  const v = {semaine:w, comp:$('#cplcomp').value, compLib:$('#cplcomp').value?'':$('#cpllib').value.trim(), projet:$('#cplproj').value.trim(), notes:$('#cplnotes').value.trim(), eleves:[...new Set([...document.querySelectorAll('.cplc:checked')].map(b=>b.value))]};
-  if(!v.comp && !v.compLib && !v.projet) return toast('Indiquez au moins la compétition ou le projet');
+  const d=$('#cpldate').value||TODAY;
+  const v = {date:d, semaine:lundiOf(d), comp:$('#cplcomp').value, compLib:'', projet:$('#cplproj').value.trim(), notes:$('#cplnotes').value.trim(), eleves:[...new Set([...document.querySelectorAll('.cplc:checked')].map(b=>b.value))]};
+  if(!v.comp && !v.projet && !v.notes) return toast('Écrivez ce qu\'ils ont fait ou le projet');
   if(id) Object.assign(CPL().find(y=>y.id===id), v); else CPL().push({id:uid('cp'), ...v});
-  closeModal(); render(); toast('Planning enregistré ✔');
+  closeModal(); render(); toast('Enregistré ✔');
 }
 function delCPL(id){ if(!confirm('Supprimer cette ligne du planning ?')) return; S.cplan=CPL().filter(y=>y.id!==id); closeModal(); render(); }
 function cplCopy(w){ const prev=CPL().filter(x=>x.semaine===addDays(w,-7)); prev.forEach(x=>CPL().push({...x, id:uid('cp'), semaine:w, eleves:[...x.eleves]})); render(); toast(prev.length+' ligne(s) copiée(s) ✔'); }
