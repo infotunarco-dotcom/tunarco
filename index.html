@@ -540,6 +540,7 @@ const NAV = [
   {k:'historique', t:'📈 Historique'},
   {k:'rattrapages', t:'🔁 Rattrapages'},
   {k:'stock', t:'📦 Stock'},
+  {k:'competiteurs', t:'🏅 Compétiteurs'},
   {k:'competitions', t:'🏆 Compétitions'},
   {k:'masterclass', t:'🎓 Master class'},
   {k:'notes', t:'📝 Notes & tâches'},
@@ -2331,10 +2332,9 @@ VIEWS.competitions = () => {
   setHead('Compétitions & événements', 'Participants, rôles et prix obtenus', canEdit()?`<button class="hb" onclick="editComp()">+ Compétition</button>`:'');
   const list = [...S.competitions].sort((a,b)=>a.date.localeCompare(b.date));
   const compet = S.eleves.filter(e=>S.tx.some(x=>x.eleve===e.id&&x.col==='comp'));
-  const tabs=`<div class="tabs"><button class="${!F_CP.v?'on':''}" onclick="F_CP.v='';render()">📋 Compétitions & participants</button><button class="${F_CP.v==='plan'?'on':''}" onclick="F_CP.v='plan';render()">🗓️ Planning compétiteurs</button>${isAdmin()?`<button class="${F_CP.v==='bilan'?'on':''}" onclick="F_CP.v='bilan';render()">📊 Bilan</button>`:''}</div>`;
-  if(!isAdmin() && F_CP.v==='bilan') F_CP.v='';
-  if(F_CP.v==='plan') return tabs + compPlan();
-  if(F_CP.v!=='bilan') return tabs + palmares(list);
+  const tabs=`<div class="tabs"><button class="${F_CP.v!=='bilan'?'on':''}" onclick="F_CP.v='';render()">📋 Compétitions & participants</button><button class="${F_CP.v==='bilan'?'on':''}" onclick="F_CP.v='bilan';render()">📊 Bilan</button></div>`;
+  if(!isAdmin() || F_CP.v==='plan') F_CP.v='';
+  if(F_CP.v!=='bilan') return (isAdmin()?tabs:'') + palmares(list);
   return tabs + `${compet.length?`<div class="alert info small">🏅 Compétiteurs ayant payé la colonne « Compétiteurs » (T1) : ${compet.map(e=>h(e.nom)).join(', ')}</div>`:''}
   ${list.map(c=>{ const parts=compParts(c); const rec=sum(parts,id=>compPaye(c.id,id)); const deps=S.caisse.filter(x=>x.refComp===c.id&&x.sens==='out').sort((a,b)=>a.date.localeCompare(b.date)); const dep=sum(deps,d=>d.montant);
     const j=Math.round((new Date(c.date)-new Date(TODAY))/864e5);
@@ -2611,6 +2611,24 @@ function compRecette(cid,id){
     const lib=`${c.nom} – ${fd.libelle}`; if(x0) Object.assign(x0,fd,{libelle:lib}); else S.caisse.push({id:uid('c'), compte:'competition', sens:'in', cat:'Autre recette', refComp:cid, ...fd, libelle:lib}); });
 }
 function setEq(cid,qi,k,v){ comp(cid).equipes[qi][k]=v.trim(); render(); toast('Enregistré ✔'); }
+let F_CPT={v:'plan', all:false};
+VIEWS.competiteurs = () => {
+  const cands = compCands();
+  setHead('Compétiteurs', `${cands.length} enfant(s) · planning de chaque semaine : compétition, projet et enfants`, canEdit()?`<button class="hb" onclick="editCPL(lundiOf(TODAY))">+ Planning cette semaine</button>`:'');
+  const tabs=`<div class="tabs"><button class="${F_CPT.v==='plan'?'on':''}" onclick="F_CPT.v='plan';render()">🗓️ Planning par semaine</button><button class="${F_CPT.v==='liste'?'on':''}" onclick="F_CPT.v='liste';render()">👥 Liste des compétiteurs</button></div>`;
+  if(F_CPT.v==='plan') return tabs + compPlan();
+  const cg = S.groupes.filter(g=>g.compet).map(g=>g.id);
+  const cur = lundiOf(TODAY);
+  return tabs + `<div class="card tw" style="padding:0"><table><thead><tr><th>N°</th><th style="text-align:left">Nom et Prénom</th><th>Âge</th><th style="text-align:left">Niveau</th><th style="text-align:left">Groupe</th><th style="text-align:left">🏆 Compétitions</th><th style="text-align:left">🔧 Projet cette semaine</th><th>Présences compét.</th></tr></thead><tbody>
+    ${cands.map((e,i)=>{ const comps=S.competitions.filter(c=>compParts(c).includes(e.id)).sort((a,b)=>a.date.localeCompare(b.date));
+      const pw=CPL().filter(x=>x.semaine===cur && x.eleves.includes(e.id));
+      const ss=S.seances.filter(s=>cg.includes(s.groupe) && s.presences[e.id]); const P=ss.filter(s=>s.presences[e.id]!=='A').length, A=ss.length-P;
+      return `<tr><td class="idx">${i+1}</td><td class="nm" style="cursor:pointer" onclick="ficheEleve('${e.id}')"><b>${h(e.nom)}</b></td><td class="c">${ageOf(e)||''}</td><td>${h(e.niveau||'')}</td><td class="small">${h(gName(grp(e.groupe)))}</td>
+        <td>${comps.map(c=>{ const q=c.equipes.find(q=>q.eleves.includes(e.id)); return `<span class="badge ${c.date<TODAY?'b-mut':'b-bad'}" style="margin:2px 2px 0 0" title="${h(q?.nom||'')}${q?.robot?' · '+h(q.robot):''}">${h(c.nom)} · ${fmtDM(c.date)}</span>`; }).join('')||'<span class="muted small">—</span>'}</td>
+        <td class="small">${pw.map(x=>`<b>${h(x.projet||'—')}</b>${comp(x.comp)?` <span class="muted">(${h(comp(x.comp).nom)})</span>`:x.compLib?` <span class="muted">(${h(x.compLib)})</span>`:''}`).join('<br>')||'<span class="muted">—</span>'}</td>
+        <td class="c"><b style="color:var(--green)">${P}</b> / <b style="color:var(--bad)">${A}</b></td></tr>`; }).join('')||`<tr><td colspan="8" class="empty">Aucun compétiteur. Ajoutez des élèves au groupe « Compétiteurs » (feuille Présences) ou aux équipes d'une compétition.</td></tr>`}
+    </tbody></table></div>`;
+};
 /* ===================== PLANNING COMPÉTITEURS (par semaine : compétition, projet, enfants) ===================== */
 const CPL = () => S.cplan || (S.cplan=[]);
 const lundiOf = d => { let x=d; while(jourOf(x)!=='Lundi') x=addDays(x,-1); return x; };
@@ -2619,11 +2637,11 @@ const compCands = () => { const ids=new Set(); S.groupes.filter(g=>g.compet).for
   return [...ids].map(elv).filter(e=>e && e.statut!=='Abandon').sort((a,b)=>a.nom.localeCompare(b.nom)); };
 function compPlan(){
   const cur=lundiOf(TODAY), first=lundiOf(ANNEE.debut), weeks=[]; for(let w=first; w<=ANNEE.fin; w=addDays(w,7)) weeks.push(w);
-  const shown = F_CP.all ? weeks : weeks.filter(w=>w>=addDays(cur,-7) && w<=addDays(cur,7*8));
+  const shown = F_CPT.all ? weeks : weeks.filter(w=>w>=addDays(cur,-7) && w<=addDays(cur,7*8));
   const cg = sortGroups(S.groupes.filter(g=>g.compet));
   const nbE = new Set(CPL().flatMap(x=>x.eleves)).size;
   return `<div class="toolbar"><span class="small muted">Pour chaque semaine : la compétition préparée, le projet / robot travaillé et les enfants qui y travaillent.</span><span class="sp"></span>
-      <button class="btn sm g" onclick="F_CP.all=!F_CP.all;render()">${F_CP.all?'🔎 Semaines proches seulement':'📅 Toute l\'année'}</button></div>
+      <button class="btn sm g" onclick="F_CPT.all=!F_CPT.all;render()">${F_CPT.all?'🔎 Semaines proches seulement':'📅 Toute l\'année'}</button></div>
     ${shown.map(w=>{ const fin=addDays(w,6), L=CPL().filter(x=>x.semaine===w), isCur=w===cur;
       const seances = cg.map(g=>{ const d=addDays(w,JOURS.indexOf(g.jour)); const f=ferieOf(d); return `<span class="badge ${f?'b-mut':'b-pur'}" title="${f?h(f.label):''}">${g.jour} ${fmtDM(d)} · ${h(g.horaire)}${f?' · '+(f.type==='VACANCES'?'vacances':'férié'):''}</span>`; }).join(' ');
       const comps = S.competitions.filter(c=>c.date>=w && c.date<=fin);
