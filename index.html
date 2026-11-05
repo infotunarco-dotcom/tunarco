@@ -919,11 +919,9 @@ function bilanPay(t){
     const ba=mid+(i===2?-32:32), [bx,by]=P(R+22,ba), [sx,sy]=P(R-6,ba), [tx,ty]=P(i?108:112,mid);
     return `<g style="cursor:pointer" onclick="F_PAY.tab='${t}';F_PAY.statut='${c.k}';go('paiements')"><title>${c.l} : ${c.n} élève(s) – voir la liste</title>
       <path d="M${x0},${y0} A${R},${R} 0 0 1 ${x1},${y1} L${x2},${y2} A${r0},${r0} 0 0 0 ${x3},${y3} Z" fill="url(#bpg${i})" stroke="#fff" stroke-width="4"/>
-      <text x="${tx}" y="${+ty-38}" text-anchor="middle" style="font-size:16px;font-weight:800;fill:#fff;letter-spacing:1px">${c.l}</text>
-      <text x="${tx}" y="${+ty+4}" text-anchor="middle" style="font-size:42px;font-weight:900;fill:#fff">${c.n}</text>
-      <text x="${tx}" y="${+ty+27}" text-anchor="middle" style="font-size:13px;font-weight:700;fill:#fff;opacity:.95">${pc(c.n)} % des élèves</text>
-      <text x="${tx}" y="${+ty+47}" text-anchor="middle" style="font-size:13px;font-weight:700;fill:#fff">Ancien : ${c.anc}</text>
-      <text x="${tx}" y="${+ty+64}" text-anchor="middle" style="font-size:13px;font-weight:700;fill:#fff">Nouveau : ${c.nouv}</text>
+      <text x="${tx}" y="${+ty-28}" text-anchor="middle" style="font-size:16px;font-weight:800;fill:#fff;letter-spacing:1px">${c.l}</text>
+      <text x="${tx}" y="${+ty+16}" text-anchor="middle" style="font-size:44px;font-weight:900;fill:#fff">${c.n}</text>
+      <text x="${tx}" y="${+ty+40}" text-anchor="middle" style="font-size:13px;font-weight:700;fill:#fff;opacity:.95">${pc(c.n)} % des élèves</text>
       <line x1="${sx}" y1="${sy}" x2="${bx}" y2="${by}" stroke="${c.c2}" stroke-width="16" stroke-linecap="round"/>
       <circle cx="${bx}" cy="${by}" r="32" fill="url(#bpg${i})" stroke="#fff" stroke-width="4" filter="url(#bpsh)"/>
       <circle cx="${bx}" cy="${by}" r="23" fill="#fff"/>
