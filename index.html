@@ -909,26 +909,40 @@ const stBadge = s => badge(s, {'Réglé':'b-ok','Non payé':'b-bad','Partiel':'b
 /* ---------------- BILAN PAIEMENTS (cercle Réglé / Partiel / Non payé) ---------------- */
 function bilanPay(t){
   const L = S.eleves.filter(e=>e.statut!=='Abandon' && e.statut!==ESSAI && e.statut!=='Externe').map(e=>({e, s:situation(e,t)}));
-  const cats = [['Réglé','Payé','#1a8a45','#e8f5ec'],['Partiel','Partiel','#f39200','#fff4e5'],['Non payé','Non payé','#d64545','#fdecec']].map(([k,l,c,bg])=>{
-    const x=L.filter(y=>y.s.statut===k); return {k,l,c,bg,n:x.length, anc:x.filter(y=>y.e.ancien==='Ancien').length, nouv:x.filter(y=>y.e.ancien==='Nouveau').length}; });
-  const N = sum(cats,c=>c.n), A = sum(cats,c=>c.anc), Nv = sum(cats,c=>c.nouv), autres = L.length-N, R=100, C=2*Math.PI*R; let off=0;
-  const arcs = N ? cats.filter(c=>c.n).map(c=>{ const len=c.n/N*C; const a=`<circle r="${R}" cx="130" cy="130" fill="none" stroke="${c.c}" stroke-width="44" stroke-dasharray="${len} ${C-len}" stroke-dashoffset="${-off}" transform="rotate(-90 130 130)"><title>${c.l} : ${c.n} élève(s)</title></circle>`; off+=len; return a; }).join('') : `<circle r="${R}" cx="130" cy="130" fill="none" stroke="#e5e7eb" stroke-width="44"/>`;
-  const pct = n => N ? Math.round(n/N*100)+' %' : '—';
-  return `<div class="card" style="text-align:center"><h3 style="text-align:center;font-size:20px">📊 Bilan des paiements – ${h(TRIMS[t].nom)}</h3>
-    <svg viewBox="0 0 260 260" width="300" height="300" style="display:block;margin:6px auto 14px">${arcs}
-      <text x="130" y="122" text-anchor="middle" style="font-size:46px;font-weight:800;fill:#1d2b36">${N}</text>
-      <text x="130" y="146" text-anchor="middle" style="font-size:14px;fill:#6b7280">élèves</text>
-      <text x="130" y="168" text-anchor="middle" style="font-size:13px;font-weight:700;fill:#1d2b36">Ancien ${A} · Nouveau ${Nv}</text></svg>
-    <div style="display:flex;flex-wrap:wrap;justify-content:center;gap:14px">
-      ${cats.map(c=>`<div style="flex:1;min-width:200px;max-width:280px;background:${c.bg};border:2px solid ${c.c};border-radius:14px;padding:14px;cursor:pointer" onclick="F_PAY.tab='${t}';F_PAY.statut='${c.k}';go('paiements')" title="Voir la liste">
-        <div style="color:${c.c};font-size:18px;font-weight:800">${c.l}</div>
-        <div style="font-size:40px;font-weight:800;color:${c.c};line-height:1.1">${c.n}</div>
-        <div class="small muted">élève(s) · ${pct(c.n)}</div>
-        <div style="display:flex;justify-content:center;gap:18px;margin-top:10px">
-          <div><div class="small muted">Ancien</div><div style="font-size:24px;font-weight:800">${c.anc}</div></div>
-          <div><div class="small muted">Nouveau</div><div style="font-size:24px;font-weight:800">${c.nouv}</div></div></div></div>`).join('')}
-    </div>
-    ${autres?`<div class="small muted" style="margin-top:8px">+ ${autres} élève(s) gratuit(s) ou sans tarif, non comptés.</div>`:''}</div>`;
+  const cats = [['Réglé','PAYÉ','#22c55e','#15803d','✔'],['Partiel','PARTIEL','#fbbf24','#ea580c','½'],['Non payé','NON PAYÉ','#f87171','#b91c1c','✖']].map(([k,l,c1,c2,ic])=>{
+    const x=L.filter(y=>y.s.statut===k); return {k,l,c1,c2,ic,n:x.length, anc:x.filter(y=>y.e.ancien==='Ancien').length, nouv:x.filter(y=>y.e.ancien==='Nouveau').length}; });
+  const N = sum(cats,c=>c.n), A = sum(cats,c=>c.anc), Nv = sum(cats,c=>c.nouv), autres = L.length-N;
+  const pc = n => N ? Math.round(n/N*100) : 0;
+  const cx=250, cy=250, R=180, r0=42, P=(rad,deg)=>{ const a=deg*Math.PI/180; return [cx+rad*Math.cos(a), cy+rad*Math.sin(a)].map(v=>v.toFixed(1)); };
+  const segs = cats.map((c,i)=>{ const mid=-90+i*120, a0=mid-60, a1=mid+60;
+    const [x0,y0]=P(R,a0), [x1,y1]=P(R,a1), [x2,y2]=P(r0,a1), [x3,y3]=P(r0,a0);
+    const ba=mid+(i===2?-32:32), [bx,by]=P(R+22,ba), [sx,sy]=P(R-6,ba), [tx,ty]=P(i?108:112,mid);
+    return `<g style="cursor:pointer" onclick="F_PAY.tab='${t}';F_PAY.statut='${c.k}';go('paiements')"><title>${c.l} : ${c.n} élève(s) – voir la liste</title>
+      <path d="M${x0},${y0} A${R},${R} 0 0 1 ${x1},${y1} L${x2},${y2} A${r0},${r0} 0 0 0 ${x3},${y3} Z" fill="url(#bpg${i})" stroke="#fff" stroke-width="4"/>
+      <text x="${tx}" y="${+ty-38}" text-anchor="middle" style="font-size:16px;font-weight:800;fill:#fff;letter-spacing:1px">${c.l}</text>
+      <text x="${tx}" y="${+ty+4}" text-anchor="middle" style="font-size:42px;font-weight:900;fill:#fff">${c.n}</text>
+      <text x="${tx}" y="${+ty+27}" text-anchor="middle" style="font-size:13px;font-weight:700;fill:#fff;opacity:.95">${pc(c.n)} % des élèves</text>
+      <text x="${tx}" y="${+ty+47}" text-anchor="middle" style="font-size:13px;font-weight:700;fill:#fff">Ancien : ${c.anc}</text>
+      <text x="${tx}" y="${+ty+64}" text-anchor="middle" style="font-size:13px;font-weight:700;fill:#fff">Nouveau : ${c.nouv}</text>
+      <line x1="${sx}" y1="${sy}" x2="${bx}" y2="${by}" stroke="${c.c2}" stroke-width="16" stroke-linecap="round"/>
+      <circle cx="${bx}" cy="${by}" r="32" fill="url(#bpg${i})" stroke="#fff" stroke-width="4" filter="url(#bpsh)"/>
+      <circle cx="${bx}" cy="${by}" r="23" fill="#fff"/>
+      <text x="${bx}" y="${+by+8}" text-anchor="middle" style="font-size:24px;font-weight:900;fill:${c.c2}">${c.ic}</text></g>`; }).join('');
+  return `<div class="card" style="padding:20px 22px;background:linear-gradient(180deg,#f8fafc,#eef2f7)">
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:10px"><h3 style="margin:0;font-size:19px">📊 Bilan des paiements</h3><span style="background:#1e3a8a;color:#fff;border-radius:999px;padding:3px 12px;font-size:12px;font-weight:700">${h(TRIMS[t].nom)}</span></div>
+    <svg viewBox="20 10 460 480" width="460" height="470" style="display:block;max-width:100%;height:auto;margin:0 auto">
+      <defs>${cats.map((c,i)=>`<linearGradient id="bpg${i}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${c.c1}"/><stop offset="1" stop-color="${c.c2}"/></linearGradient>`).join('')}
+        <filter id="bpsh" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity=".25"/></filter></defs>
+      <circle cx="${cx}" cy="${cy}" r="${R+6}" fill="#fff" filter="url(#bpsh)"/>
+      ${segs}
+      <circle cx="${cx}" cy="${cy}" r="${r0}" fill="#fff" filter="url(#bpsh)"/>
+      <text x="${cx}" y="${cy+4}" text-anchor="middle" style="font-size:26px;font-weight:900;fill:#0f172a">${N}</text>
+      <text x="${cx}" y="${cy+20}" text-anchor="middle" style="font-size:10px;font-weight:700;fill:#64748b">ÉLÈVES</text>
+    </svg>
+    <div style="display:flex;justify-content:center;gap:10px;margin-top:4px">
+      <span style="background:#1e3a8a;color:#fff;border-radius:999px;padding:5px 14px;font-size:14px;font-weight:700">Ancien : ${A}</span>
+      <span style="background:#9d174d;color:#fff;border-radius:999px;padding:5px 14px;font-size:14px;font-weight:700">Nouveau : ${Nv}</span></div>
+    ${autres?`<div class="small muted" style="text-align:center;margin-top:8px">+ ${autres} élève(s) gratuit(s) ou sans tarif, non comptés.</div>`:''}</div>`;
 }
 VIEWS.dashboard = () => {
   const t = curTrim(), T = TRIMS[t];
