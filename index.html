@@ -2775,6 +2775,7 @@ async function ptImport(f){ if(!f) return; try{
   if(!Object.keys(out).length) return toast('Aucune fiche mensuelle trouvée dans ce fichier');
   S.ptHist={...(S.ptHist||{}), ...out}; render(); toast(Object.keys(out).length+' mois importés depuis la fiche Excel ✔');
  }catch(e){ toast('Import impossible : '+e.message); } }
+function ptDebut(k,lab){ S.pointage=S.pointage||{}; const D=S.pointage.debut=S.pointage.debut||{}; const v=prompt('Date d\'entrée de '+lab+' dans l\'équipe (AAAA-MM-JJ) — vide pour enlever :', D[k]||''); if(v===null) return; if(v.trim() && !/^\d{4}-\d{2}-\d{2}$/.test(v.trim())) return toast('Format : 2026-07-06'); if(v.trim()) D[k]=v.trim(); else delete D[k]; render(); toast('Date d\'entrée enregistrée ✔'); }
 function ptLogin(){ const v=$('#ptk').value.trim(); if(!v) return toast('Tapez le mot de passe'); PTK.set(v); ptLoad(); }
 const hm = min => { min=Math.round(min); return Math.floor(min/60)+'h'+String(min%60).padStart(2,'0'); };
 const tmin = t => { const [a,b]=String(t).split(':'); return (+a)*60+(+b||0); };
@@ -2804,21 +2805,24 @@ VIEWS.pointage = () => {
   hNames.filter(n=>!PS.some(r=>r.hn===n)).forEach(n=>PS.push({id:'', label:n, actif:true, hn:n, only:true}));
   if(PTD.p) PS=PS.filter(r=>r.id===PTD.p);
   const jOf = (id,d) => id ? J.find(j=>j.id===id && j.d===d) : null;
+  const DEB = (S.pointage&&S.pointage.debut)||{}, fk = r => nrm(String(r.hn||r.label).split(' ')[0]);
+  const avant = (r,d) => DEB[fk(r)] && d < DEB[fk(r)];
   const hc = (r,d) => r.hn ? (HM[r.hn]||{})[String(+d.slice(8))]||'' : '';
   const isW = d => JT.includes(jourOf(d));
   const COD = {P:['#dcfce7','#15803d'],R:['#f1f5f9','#64748b'],C:['#fee2e2','#b91c1c'],CP:['#fee2e2','#b91c1c'],F:['#ede9fe','#6d28d9'],A:['#ffedd5','#c2410c'],AI:['#ffedd5','#c2410c'],M:['#fef9c3','#a16207'],CS:['#fee2e2','#b91c1c']};
   const cell = (r,d) => { const j=jOf(r.id,d), st='text-align:center;border-left:1px solid #cbd5e1;white-space:nowrap;';
+    if(avant(r,d)) return `<td style="${st}background:repeating-linear-gradient(45deg,#f8fafc,#f8fafc 4px,#eef2f7 4px,#eef2f7 8px)" title="Pas encore dans l'équipe"></td>`;
     if(j){ const so=j.sor?j.sor.slice(0,5):(j.open&&d===today?'…':'<span style="color:var(--bad)">?</span>'); return `<td style="${st}background:#dcfce7;font-weight:700;font-size:11px">${j.ent?j.ent.slice(0,5):'—'} | ${so}</td>`; }
     const c=hc(r,d); if(c){ const k=COD[c.toUpperCase()]||['#f8fafc','#334155']; return `<td style="${st}background:${k[0]};color:${k[1]};font-weight:800" title="Fiche Excel">${h(c)}</td>`; }
     if(!isW(d)) return `<td style="${st}background:#f1f5f9"></td>`;
     if(d<today && !(r.hn && Object.keys(HM[r.hn]||{}).length)) return `<td style="${st}background:#fee2e2;color:var(--bad);font-weight:800">C</td>`;
     return `<td style="${st}"></td>`; };
   const stat = r => { const o={pres:0,min:0,oubli:0,conge:0,repos:0,ferie:0,abs:0};
-    days.forEach(d=>{ const j=jOf(r.id,d); if(j){ o.pres++; o.min+=j.min; if(j.open&&d!==today) o.oubli++; return; } const c=hc(r,d).toUpperCase();
+    days.forEach(d=>{ if(avant(r,d)) return; const j=jOf(r.id,d); if(j){ o.pres++; o.min+=j.min; if(j.open&&d!==today) o.oubli++; return; } const c=hc(r,d).toUpperCase();
       if(c==='P') o.pres++; else if(['C','CP','CS'].includes(c)) o.conge++; else if(c==='R') o.repos++; else if(c==='F') o.ferie++; else if(['A','AI','M'].includes(c)) o.abs++;
       else if(!c && isW(d) && d<today && !(r.hn && Object.keys(HM[r.hn]||{}).length)) o.conge++; }); return o; };
-  const isPres = (r,d) => !!jOf(r.id,d) || hc(r,d).toUpperCase()==='P';
-  const rows = PS.map(r=>`<tr><td style="white-space:nowrap;border-right:2px solid var(--line);position:sticky;left:0;background:#fff;z-index:1"><b>${h(r.label)}</b>${r.actif?'':' <span class="small muted">(inactif)</span>'}${r.only?' <span class="small muted">(fiche Excel)</span>':''}</td>${days.map(d=>cell(r,d)).join('')}</tr>`).join('');
+  const isPres = (r,d) => !avant(r,d) && (!!jOf(r.id,d) || hc(r,d).toUpperCase()==='P');
+  const rows = PS.map(r=>`<tr><td style="white-space:nowrap;border-right:2px solid var(--line);position:sticky;left:0;background:#fff;z-index:1;cursor:pointer" title="Cliquer pour régler la date d'entrée" onclick="ptDebut('${js(fk(r))}','${js(r.label)}')"><b>${h(r.label)}</b>${DEB[fk(r)]?` <span class="small muted">depuis ${fmtD(DEB[fk(r)])}</span>`:''}${r.actif?'':' <span class="small muted">(inactif)</span>'}${r.only?' <span class="small muted">(fiche Excel)</span>':''}</td>${days.map(d=>cell(r,d)).join('')}</tr>`).join('');
   const foot = `<tr style="background:#f8fafc"><td style="position:sticky;left:0;background:#f8fafc;z-index:1"><b>TT</b></td>${days.map(d=>{ const n=PS.filter(r=>isPres(r,d)).length; return `<td class="c small" style="border-left:1px solid #cbd5e1;text-align:center"><b>${(isW(d)&&d<=today)||n?n+'/'+PS.length:''}</b></td>`; }).join('')}</tr>`;
   const recap = `<div class="card tw" style="padding:0;max-width:900px"><table><thead><tr><th style="text-align:left">📊 Bilan ${mLab(PTD.m)}</th><th>Jours présents</th><th>Total heures</th><th>Repos</th><th>Fériés</th><th>Absences</th><th>Sorties oubliées</th><th style="background:#b91c1c;color:#fff">Congés</th></tr></thead><tbody>
     ${PS.map(r=>{ const st=stat(r); return `<tr><td><b>${h(r.label)}</b></td><td class="c"><b>${st.pres}</b></td><td class="c"><b>${st.min?hm(st.min):'—'}</b></td><td class="c">${st.repos||'—'}</td><td class="c">${st.ferie||'—'}</td><td class="c" style="color:${st.abs?'#c2410c':'inherit'}">${st.abs||'—'}</td><td class="c" style="color:${st.oubli?'var(--bad)':'inherit'}">${st.oubli||'—'}</td><td class="c" style="background:#fee2e2;color:var(--bad);font-size:16px"><b>${st.conge}</b></td></tr>`; }).join('')}</tbody></table></div>`;
@@ -2832,7 +2836,7 @@ VIEWS.pointage = () => {
       <tr>${days.map(d=>`<th class="sl" style="border-left:1px solid #fff;white-space:nowrap;${isW(d)?'':'opacity:.5'}">Entrée | Sortie</th>`).join('')}</tr></thead>
       <tbody>${rows||`<tr><td colspan="${days.length+1}" class="empty">Aucun personnel.</td></tr>`}${PS.length?foot:''}</tbody></table></div>
     ${PS.length?recap:''}
-    <div class="legend small"><span><i style="background:#dcfce7"></i>Présent : entrée | sortie</span><span><i style="background:#fee2e2"></i>C = congé</span><span><i style="background:#ede9fe"></i>F = férié</span><span><i style="background:#f1f5f9"></i>R = repos</span><span><i style="background:#ffedd5"></i>A = absence</span><span>Les lettres viennent de la fiche Excel ; les heures viennent de l'appli</span><span><i style="background:#f1f5f9"></i>Jour non travaillé</span><span>? = sortie oubliée</span></div>
+    <div class="legend small"><span><i style="background:#dcfce7"></i>Présent : entrée | sortie</span><span><i style="background:#fee2e2"></i>C = congé</span><span><i style="background:#ede9fe"></i>F = férié</span><span><i style="background:#f1f5f9"></i>R = repos</span><span><i style="background:#ffedd5"></i>A = absence</span><span>Hachuré = pas encore dans l'équipe (cliquez sur un nom pour régler sa date d'entrée)</span><span>Les lettres viennent de la fiche Excel ; les heures viennent de l'appli</span><span><i style="background:#f1f5f9"></i>Jour non travaillé</span><span>? = sortie oubliée</span></div>
     <div class="small muted">🔒 Mot de passe enregistré sur cet ordinateur · <a style="cursor:pointer;text-decoration:underline" onclick="PTK.set('');PTD.data=null;render()">se déconnecter du pointage</a></div>`;
 };
 VIEWS.notes = () => {
