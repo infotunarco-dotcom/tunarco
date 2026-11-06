@@ -517,7 +517,8 @@ function situation(e,t){
 }
 const projetPaye = eid => sum(S.tx.filter(x=>x.eleve===eid && x.col==='projet'), x=>x.montant);
 const prixP1 = () => S.prixP1 || (S.prixP1={});
-const projetDu = e => { const o=e.duProjet; if(o!==undefined && o!==null && o!=='') return +o; if(e.projetType==='P1') return +prixP1()[famille(e.niveau)] || 0; return S.prixProjet[famille(e.niveau)] || 0; };
+const prixP2 = () => S.prixP2 || (S.prixP2={});
+const projetDu = e => { const o=e.duProjet; if(o!==undefined && o!==null && o!=='') return +o; if(e.projetType==='P1') return +prixP1()[famille(e.niveau)] || 0; if(e.projetType==='P2') return +prixP2()[famille(e.niveau)] || 0; return S.prixProjet[famille(e.niveau)] || 0; };
 function recettesAuto(compte, t){
   const L = S.tx.filter(x => compte==='projet' ? x.col==='projet' : compte==='competition' ? x.col==='compet' : compte==='masterclass' ? x.col==='mc' : (x.col!=='projet' && x.col!=='compet' && x.col!=='mc' && (!t || x.trim===t)));
   return L;
@@ -1082,7 +1083,7 @@ function payTrim(t){
   </table></div>
   <div class="legend"><span><i style="background:var(--green-l);border:1px solid var(--green)"></i>Réglé</span><span><i style="background:var(--orange-l);border:1px solid var(--orange)"></i>Partiel</span><span><i style="background:var(--purple-l);border:1px solid var(--purple)"></i>Compétiteurs</span><span><i style="background:#f1f4f8;border:1px solid #ccd"></i>Pas encore payé</span><span>· Reste = montant dû − (inscription + mois). Les compétiteurs ne comptent pas dans le reste.</span></div>`;
 }
-function setProjetType(id){ const e=elv(id); e.projetType = e.projetType==='P1'?'':'P1'; render(); toast(e.nom+' : '+(e.projetType==='P1'?'Projet 1 seul (a déjà un robot)':'Projet 1+2')+' ✔'); }
+function setProjetType(id,v){ const e=elv(id); e.projetType = v||''; render(); toast(e.nom+' : '+({P1:'Projet 1 seul',P2:'Projet 2 seul'}[e.projetType]||'Projet 1+2')+' ✔'); }
 function setPrixProjetE(id,v){ const e=elv(id); v=String(v).trim(); e.duProjet = v===''?null:(+v||0); render(); toast(e.nom+' : '+(v===''?'prix du niveau':dt(e.duProjet))+' ✔'); }
 function payProjet(){
   setHead('Paiements · Projet 1+2', 'Prix modifiable ici : par niveau (à droite) ou par élève (case Prix projet)');
@@ -1093,8 +1094,8 @@ function payProjet(){
     rows += `<tr>${i===0?`<td class="day" rowspan="${L.length}" style="background:${DAYCOL[j]}">${j.toUpperCase()}</td>`:''}<td class="idx">${i+1}</td>
       <td class="nm" onclick="ficheEleve('${e.id}')">${h(e.nom)}</td>
       <td><select onchange="setF('${e.id}','niveau',this.value)"><option value="À préciser">À préciser</option>${NIVEAUX.map(n=>`<option ${e.niveau===n?'selected':''}>${n}</option>`).join('')}</select></td>
-      <td style="white-space:nowrap"><button class="btn sm ${e.projetType==='P1'?'o':'g'}" title="L'élève a déjà un robot : il achète seulement le Projet 1 (passage de niveau)" onclick="setProjetType('${e.id}')">${e.projetType==='P1'?'🤖 Projet 1 seul':'Projet 1+2'}</button></td>
-      <td class="tt" style="white-space:nowrap"><input type="number" min="0" class="ein" style="width:72px;font-weight:700;${e.duProjet!==undefined&&e.duProjet!==null&&e.duProjet!==''?'background:#fff7ed;border-color:var(--orange)':''}" value="${e.duProjet!==undefined&&e.duProjet!==null&&e.duProjet!==''?e.duProjet:''}" placeholder="${e.projetType==='P1'?(prixP1()[famille(e.niveau)]||0):(S.prixProjet[famille(e.niveau)]||0)}" title="Vide = prix du niveau" onchange="setPrixProjetE('${e.id}',this.value)"> DT</td>
+      <td style="white-space:nowrap"><select style="font-weight:700;min-width:125px;${e.projetType?'background:#fff7ed;border-color:var(--orange)':''}" title="Projet 1 seul = l'élève a déjà un robot (passage de niveau)" onchange="setProjetType('${e.id}',this.value)"><option value="" ${!e.projetType?'selected':''}>Projet 1+2</option><option value="P1" ${e.projetType==='P1'?'selected':''}>Projet 1 seul</option><option value="P2" ${e.projetType==='P2'?'selected':''}>Projet 2 seul</option></select></td>
+      <td class="tt" style="white-space:nowrap"><input type="number" min="0" class="ein" style="width:72px;font-weight:700;${e.duProjet!==undefined&&e.duProjet!==null&&e.duProjet!==''?'background:#fff7ed;border-color:var(--orange)':''}" value="${e.duProjet!==undefined&&e.duProjet!==null&&e.duProjet!==''?e.duProjet:''}" placeholder="${e.projetType==='P1'?(prixP1()[famille(e.niveau)]||0):e.projetType==='P2'?(prixP2()[famille(e.niveau)]||0):(S.prixProjet[famille(e.niveau)]||0)}" title="Vide = prix du niveau" onchange="setPrixProjetE('${e.id}',this.value)"> DT</td>
       <td><span class="cell ${p?(p>=d&&d?'full':'part'):''}" onclick="cellModal('${e.id}','projet','projet')">${p?dt(p):'—'}</span></td>
       <td class="tt">${!d?'—':p>=d?badge('Réglé','b-ok'):badge(dt(d-p),'b-warn')}</td>
       <td><input class="rq" value="${h(e.rqProjet||'')}" placeholder="—" style="min-width:130px" onchange="setF('${e.id}','rqProjet',this.value)"></td>
@@ -1105,7 +1106,7 @@ function payProjet(){
   <div class="grid split">
     <div class="card tw" style="padding:0;max-height:75vh;overflow:auto"><table class="ptable" style="min-width:820px">
       <thead><tr><th>JR</th><th>N°</th><th style="text-align:left">Nom et Prénom</th><th>Niveau</th><th>Projet</th><th>Prix projet</th><th>Payé</th><th>Reste</th><th>Remarque</th><th>Mode de paiement</th><th>Type de paiement</th></tr></thead>
-      <tbody>${rows}<tr class="tot"><td></td><td></td><td>TT</td><td></td><td class="small">${list.filter(e=>e.projetType==='P1').length} × P1 seul</td><td class="tt">${dt(sum(list,projetDu))}</td><td class="tt" style="text-align:center">${dt(sum(list,e=>projetPaye(e.id)))}</td><td class="tt">${dt(sum(list,e=>Math.max(0,projetDu(e)-projetPaye(e.id))))}</td><td colspan="3"></td></tr></tbody></table></div>
+      <tbody>${rows}<tr class="tot"><td></td><td></td><td>TT</td><td></td><td class="small">${list.filter(e=>e.projetType==='P1').length} × P1 · ${list.filter(e=>e.projetType==='P2').length} × P2</td><td class="tt">${dt(sum(list,projetDu))}</td><td class="tt" style="text-align:center">${dt(sum(list,e=>projetPaye(e.id)))}</td><td class="tt">${dt(sum(list,e=>Math.max(0,projetDu(e)-projetPaye(e.id))))}</td><td colspan="3"></td></tr></tbody></table></div>
     <div class="card"><h3>Résumé par niveau</h3><table><tr><th>Niveau</th><th class="num">Élèves</th><th class="num">Total payé</th></tr>
       ${resume.map(r=>`<tr><td>${r.n}</td><td class="num">${r.c}</td><td class="num">${dt(r.p)}</td></tr>`).join('')}
       <tr><td><b>À préciser</b></td><td class="num">${S.eleves.filter(e=>!famille(e.niveau)).length}</td><td></td></tr></table>
@@ -1113,6 +1114,8 @@ function payProjet(){
       ${Object.keys(S.prixProjet).map(k=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="flex:1">${h(k)}</span><input type="number" min="0" style="width:90px;font-weight:700" value="${S.prixProjet[k]}" onchange="S.prixProjet['${js(k)}']=+this.value||0;render();toast('Prix ${js(k)} enregistré ✔')"> DT</div>`).join('')}
       <h3 style="margin-top:16px">🤖 Prix Projet 1 seul <span class="small muted">(élève qui a déjà un robot)</span></h3>
       ${Object.keys(S.prixProjet).map(k=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="flex:1">${h(k)}</span><input type="number" min="0" style="width:90px;font-weight:700" value="${prixP1()[k]??''}" placeholder="à définir" onchange="prixP1()['${js(k)}']=+this.value||0;render();toast('Prix Projet 1 ${js(k)} enregistré ✔')"> DT</div>`).join('')}
+      <h3 style="margin-top:16px">🔧 Prix Projet 2 seul</h3>
+      ${Object.keys(S.prixProjet).map(k=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="flex:1">${h(k)}</span><input type="number" min="0" style="width:90px;font-weight:700" value="${prixP2()[k]??''}" placeholder="à définir" onchange="prixP2()['${js(k)}']=+this.value||0;render();toast('Prix Projet 2 ${js(k)} enregistré ✔')"> DT</div>`).join('')}
       <div class="small muted">Pour un élève avec un prix spécial, tapez le montant dans sa case « Prix projet » (en orange). Videz la case pour revenir au prix du niveau.</div></div>
   </div>`;
 }
