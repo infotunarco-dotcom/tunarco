@@ -2764,6 +2764,17 @@ async function ptLoad(){ if(PTD.busy) return; const k=PTK.get(); if(!k){ render(
   catch(e){ PTD.err='Connexion impossible au script de pointage'; }
   PTD.busy=false; if(VIEW==='pointage') render(); }
 function ptJT(j,on){ S.pointage=S.pointage||{}; const L=new Set(S.pointage.jours||['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi']); on?L.add(j):L.delete(j); S.pointage.jours=JOURS.filter(x=>L.has(x)); render(); }
+async function ptImport(f){ if(!f) return; try{
+  if(!window.XLSX) await new Promise((ok,ko)=>{ const sc=document.createElement('script'); sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; sc.onload=ok; sc.onerror=ko; document.head.appendChild(sc); });
+  const wb=XLSX.read(await f.arrayBuffer(),{type:'array'}); const out={}; let yr=null;
+  wb.SheetNames.forEach(nm=>{ const mm=nm.match(/^(\d{2})\s*-/); if(!mm) return; const rows=XLSX.utils.sheet_to_json(wb.Sheets[nm],{header:1,defval:''});
+    const t=(rows.find(r=>/FICHE DE PR/i.test(String(r[0])))||[''])[0]; const y=(String(t).match(/(20\d\d)/)||[])[1]||yr||String(new Date().getFullYear()); yr=y;
+    const hi=rows.findIndex(r=>String(r[1]).trim()==='Employé'); if(hi<0) return; const days=[]; for(let k=2;k<rows[hi].length;k++){ const v=rows[hi][k]; if(v!==''&&!isNaN(+v)) days.push(+v); else break; }
+    const m={}; rows.slice(hi+2).forEach(r=>{ const n=String(r[1]||'').trim(); if(!n||/^TOTAL/i.test(n)) return; const c={}; days.forEach((d,k)=>{ const v=String(r[2+k]||'').trim(); if(v) c[d]=v; }); if(Object.keys(c).length) m[n]=c; });
+    if(Object.keys(m).length) out[y+'-'+mm[1]]=m; });
+  if(!Object.keys(out).length) return toast('Aucune fiche mensuelle trouvée dans ce fichier');
+  S.ptHist={...(S.ptHist||{}), ...out}; render(); toast(Object.keys(out).length+' mois importés depuis la fiche Excel ✔');
+ }catch(e){ toast('Import impossible : '+e.message); } }
 function ptLogin(){ const v=$('#ptk').value.trim(); if(!v) return toast('Tapez le mot de passe'); PTK.set(v); ptLoad(); }
 const hm = min => { min=Math.round(min); return Math.floor(min/60)+'h'+String(min%60).padStart(2,'0'); };
 const tmin = t => { const [a,b]=String(t).split(':'); return (+a)*60+(+b||0); };
@@ -2778,7 +2789,7 @@ VIEWS.pointage = () => {
     ${PTD.err?`<div class="alert bad small">${h(PTD.err)}</div>`:''}<input id="ptk" type="password" style="width:100%" placeholder="Mot de passe admin" onkeydown="if(event.key==='Enter')ptLogin()"><div class="toolbar" style="margin-top:8px"><span class="sp"></span><button class="btn o" onclick="ptLogin()">Se connecter</button></div></div>`;
   if(!PTD.data){ if(!PTD.busy && !PTD.err) setTimeout(ptLoad,0); return PTD.err?`<div class="alert bad">${h(PTD.err)} <button class="btn sm" onclick="ptLoad()">Réessayer</button></div>`:'<div class="card empty">⏳ Chargement des pointages…</div>'; }
   const D=PTD.data, pers=D.personnel||[], P=D.pointages||[], J=ptJours(P), today=ptKey(D.aujourdhui);
-  const months=[...new Set(J.map(j=>j.d.slice(0,7)))].sort().reverse(); if(!PTD.m) PTD.m=months[0]||TODAY.slice(0,7);
+  const HI=S.ptHist||{}; const months=[...new Set(J.map(j=>j.d.slice(0,7)).concat(Object.keys(HI)))].sort().reverse(); if(!PTD.m) PTD.m=TODAY.slice(0,7);
   const nomOf = id => { const p=pers.find(x=>String(x.id)===String(id)); return p?p.prenom+' '+p.nom:'?'; };
   const jT = J.filter(j=>j.d===today);
   const todayCards = pers.filter(p=>p.actif).map(p=>{ const j=jT.find(x=>x.id===String(p.id)); const st=!j?['Absent','#94a3b8','#f1f5f9']:j.open?['Présent','#16a34a','#dcfce7']:['Parti','#0284c7','#e0f2fe'];
@@ -2786,30 +2797,42 @@ VIEWS.pointage = () => {
   const mLab = m => MOIS_L[+m.slice(5,7)-1].charAt(0)+MOIS_L[+m.slice(5,7)-1].slice(1).toLowerCase()+' '+m.slice(0,4);
   const JT = (S.pointage&&S.pointage.jours) || ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
   const nbJ = new Date(+PTD.m.slice(0,4), +PTD.m.slice(5,7), 0).getDate(), days=[...Array(nbJ)].map((_,i)=>PTD.m+'-'+String(i+1).padStart(2,'0'));
-  const PS = pers.filter(p=>(p.actif || J.some(j=>j.id===String(p.id)&&j.d.startsWith(PTD.m))) && (!PTD.p || String(p.id)===PTD.p));
-  const jOf = (id,d) => J.find(j=>j.id===String(id) && j.d===d);
+  const nrm = x => String(x||'').trim().toLowerCase();
+  const HM = HI[PTD.m]||{}, hNames=Object.keys(HM);
+  const hOf = p => hNames.find(n=>nrm(n)===nrm(p.prenom) || nrm(n)===nrm(p.prenom+' '+p.nom) || nrm(n)===nrm(p.nom));
+  let PS = pers.filter(p=>(p.actif || J.some(j=>j.id===String(p.id)&&j.d.startsWith(PTD.m)) || hOf(p))).map(p=>({id:String(p.id), label:p.prenom+' '+p.nom, actif:p.actif, hn:hOf(p)}));
+  hNames.filter(n=>!PS.some(r=>r.hn===n)).forEach(n=>PS.push({id:'', label:n, actif:true, hn:n, only:true}));
+  if(PTD.p) PS=PS.filter(r=>r.id===PTD.p);
+  const jOf = (id,d) => id ? J.find(j=>j.id===id && j.d===d) : null;
+  const hc = (r,d) => r.hn ? (HM[r.hn]||{})[String(+d.slice(8))]||'' : '';
   const isW = d => JT.includes(jourOf(d));
-  const cell = (id,d) => { const j=jOf(id,d), st='text-align:center;border-left:1px solid #cbd5e1;white-space:nowrap;';
+  const COD = {P:['#dcfce7','#15803d'],R:['#f1f5f9','#64748b'],C:['#fee2e2','#b91c1c'],CP:['#fee2e2','#b91c1c'],F:['#ede9fe','#6d28d9'],A:['#ffedd5','#c2410c'],AI:['#ffedd5','#c2410c'],M:['#fef9c3','#a16207'],CS:['#fee2e2','#b91c1c']};
+  const cell = (r,d) => { const j=jOf(r.id,d), st='text-align:center;border-left:1px solid #cbd5e1;white-space:nowrap;';
     if(j){ const so=j.sor?j.sor.slice(0,5):(j.open&&d===today?'…':'<span style="color:var(--bad)">?</span>'); return `<td style="${st}background:#dcfce7;font-weight:700;font-size:11px">${j.ent?j.ent.slice(0,5):'—'} | ${so}</td>`; }
+    const c=hc(r,d); if(c){ const k=COD[c.toUpperCase()]||['#f8fafc','#334155']; return `<td style="${st}background:${k[0]};color:${k[1]};font-weight:800" title="Fiche Excel">${h(c)}</td>`; }
     if(!isW(d)) return `<td style="${st}background:#f1f5f9"></td>`;
-    if(d<today) return `<td style="${st}background:#fee2e2;color:var(--bad);font-weight:800">C</td>`;
+    if(d<today && !(r.hn && Object.keys(HM[r.hn]||{}).length)) return `<td style="${st}background:#fee2e2;color:var(--bad);font-weight:800">C</td>`;
     return `<td style="${st}"></td>`; };
-  const stat = id => { const L=days.map(d=>jOf(id,d)).filter(Boolean); return {pres:L.length, min:sum(L,j=>j.min), oubli:L.filter(j=>j.open&&j.d!==today).length, conge:days.filter(d=>isW(d)&&d<today&&!jOf(id,d)).length}; };
-  const rows = PS.map(p=>`<tr><td style="white-space:nowrap;border-right:2px solid var(--line);position:sticky;left:0;background:#fff;z-index:1"><b>${h(p.prenom+' '+p.nom)}</b>${p.actif?'':' <span class="small muted">(inactif)</span>'}</td>${days.map(d=>cell(p.id,d)).join('')}</tr>`).join('');
-  const foot = `<tr style="background:#f8fafc"><td style="position:sticky;left:0;background:#f8fafc;z-index:1"><b>TT</b></td>${days.map(d=>{ const n=PS.filter(p=>jOf(p.id,d)).length; return `<td class="c small" style="border-left:1px solid #cbd5e1;text-align:center"><b>${(isW(d)&&d<=today)||n?n+'/'+PS.length:''}</b></td>`; }).join('')}</tr>`;
-  const recap = `<div class="card tw" style="padding:0;max-width:760px"><table><thead><tr><th style="text-align:left">📊 Bilan ${mLab(PTD.m)}</th><th>Jours présents</th><th>Total heures</th><th>Sorties oubliées</th><th style="background:#b91c1c;color:#fff">Congés</th></tr></thead><tbody>
-    ${PS.map(p=>{ const st=stat(p.id); return `<tr><td><b>${h(p.prenom+' '+p.nom)}</b></td><td class="c"><b>${st.pres}</b></td><td class="c"><b>${hm(st.min)}</b></td><td class="c" style="color:${st.oubli?'var(--bad)':'inherit'}">${st.oubli||'—'}</td><td class="c" style="background:#fee2e2;color:var(--bad);font-size:16px"><b>${st.conge}</b></td></tr>`; }).join('')}</tbody></table></div>`;
+  const stat = r => { const o={pres:0,min:0,oubli:0,conge:0,repos:0,ferie:0,abs:0};
+    days.forEach(d=>{ const j=jOf(r.id,d); if(j){ o.pres++; o.min+=j.min; if(j.open&&d!==today) o.oubli++; return; } const c=hc(r,d).toUpperCase();
+      if(c==='P') o.pres++; else if(['C','CP','CS'].includes(c)) o.conge++; else if(c==='R') o.repos++; else if(c==='F') o.ferie++; else if(['A','AI','M'].includes(c)) o.abs++;
+      else if(!c && isW(d) && d<today && !(r.hn && Object.keys(HM[r.hn]||{}).length)) o.conge++; }); return o; };
+  const isPres = (r,d) => !!jOf(r.id,d) || hc(r,d).toUpperCase()==='P';
+  const rows = PS.map(r=>`<tr><td style="white-space:nowrap;border-right:2px solid var(--line);position:sticky;left:0;background:#fff;z-index:1"><b>${h(r.label)}</b>${r.actif?'':' <span class="small muted">(inactif)</span>'}${r.only?' <span class="small muted">(fiche Excel)</span>':''}</td>${days.map(d=>cell(r,d)).join('')}</tr>`).join('');
+  const foot = `<tr style="background:#f8fafc"><td style="position:sticky;left:0;background:#f8fafc;z-index:1"><b>TT</b></td>${days.map(d=>{ const n=PS.filter(r=>isPres(r,d)).length; return `<td class="c small" style="border-left:1px solid #cbd5e1;text-align:center"><b>${(isW(d)&&d<=today)||n?n+'/'+PS.length:''}</b></td>`; }).join('')}</tr>`;
+  const recap = `<div class="card tw" style="padding:0;max-width:900px"><table><thead><tr><th style="text-align:left">📊 Bilan ${mLab(PTD.m)}</th><th>Jours présents</th><th>Total heures</th><th>Repos</th><th>Fériés</th><th>Absences</th><th>Sorties oubliées</th><th style="background:#b91c1c;color:#fff">Congés</th></tr></thead><tbody>
+    ${PS.map(r=>{ const st=stat(r); return `<tr><td><b>${h(r.label)}</b></td><td class="c"><b>${st.pres}</b></td><td class="c"><b>${st.min?hm(st.min):'—'}</b></td><td class="c">${st.repos||'—'}</td><td class="c">${st.ferie||'—'}</td><td class="c" style="color:${st.abs?'#c2410c':'inherit'}">${st.abs||'—'}</td><td class="c" style="color:${st.oubli?'var(--bad)':'inherit'}">${st.oubli||'—'}</td><td class="c" style="background:#fee2e2;color:var(--bad);font-size:16px"><b>${st.conge}</b></td></tr>`; }).join('')}</tbody></table></div>`;
   return `<div class="card"><h3 style="margin-top:0">📍 Aujourd'hui · ${h(D.aujourdhui)} <span class="small muted">· mis à jour à ${PTD.at||''}</span></h3><div style="display:flex;flex-wrap:wrap;gap:10px">${todayCards||'<div class="small muted">Aucun personnel actif.</div>'}</div></div>
     <div class="toolbar"><select onchange="PTD.m=this.value;render()">${[...new Set([TODAY.slice(0,7),...months])].sort().reverse().map(m=>`<option value="${m}" ${PTD.m===m?'selected':''}>${mLab(m)}</option>`).join('')}</select>
       <select onchange="PTD.p=this.value;render()"><option value="">Tout le personnel</option>${pers.map(p=>`<option value="${h(String(p.id))}" ${PTD.p===String(p.id)?'selected':''}>${h(p.prenom+' '+p.nom)}${p.actif?'':' (inactif)'}</option>`).join('')}</select>
       <span class="small muted">Jours de travail :</span>${JOURS.map(j=>`<label class="small" style="display:flex;gap:3px;align-items:center"><input type="checkbox" ${JT.includes(j)?'checked':''} onchange="ptJT('${j}',this.checked)">${j.slice(0,3)}</label>`).join('')}
-      <span class="sp"></span><span class="small muted">${P.length} pointage(s) dans le Google Sheet</span></div>
+      <span class="sp"></span><label class="btn sm g" style="cursor:pointer">📥 Importer la fiche Excel<input type="file" accept=".xlsx,.xls" style="display:none" onchange="ptImport(this.files[0])"></label><span class="small muted">${P.length} pointage(s) appli · ${Object.keys(HI).length} mois fiche Excel</span></div>
     <div class="card tw" style="padding:0;overflow:auto"><table class="ptable" style="font-size:12px"><thead>
       <tr><th rowspan="2" style="text-align:left;min-width:150px;position:sticky;left:0;z-index:2">👤 Personnel</th>${days.map(d=>`<th class="dd ${d===today?'today':''}" style="border-left:1px solid #fff;${isW(d)?'':'opacity:.5'}">${String(+d.slice(8)).padStart(2,'0')} ${MOIS_FR[+d.slice(5,7)-1]}</th>`).join('')}</tr>
       <tr>${days.map(d=>`<th class="sl" style="border-left:1px solid #fff;white-space:nowrap;${isW(d)?'':'opacity:.5'}">Entrée | Sortie</th>`).join('')}</tr></thead>
       <tbody>${rows||`<tr><td colspan="${days.length+1}" class="empty">Aucun personnel.</td></tr>`}${PS.length?foot:''}</tbody></table></div>
     ${PS.length?recap:''}
-    <div class="legend small"><span><i style="background:#dcfce7"></i>Présent : entrée | sortie</span><span><i style="background:#fee2e2"></i>C = congé (jour de travail sans pointage)</span><span><i style="background:#f1f5f9"></i>Jour non travaillé</span><span>? = sortie oubliée</span></div>
+    <div class="legend small"><span><i style="background:#dcfce7"></i>Présent : entrée | sortie</span><span><i style="background:#fee2e2"></i>C = congé</span><span><i style="background:#ede9fe"></i>F = férié</span><span><i style="background:#f1f5f9"></i>R = repos</span><span><i style="background:#ffedd5"></i>A = absence</span><span>Les lettres viennent de la fiche Excel ; les heures viennent de l'appli</span><span><i style="background:#f1f5f9"></i>Jour non travaillé</span><span>? = sortie oubliée</span></div>
     <div class="small muted">🔒 Mot de passe enregistré sur cet ordinateur · <a style="cursor:pointer;text-decoration:underline" onclick="PTK.set('');PTD.data=null;render()">se déconnecter du pointage</a></div>`;
 };
 VIEWS.notes = () => {
