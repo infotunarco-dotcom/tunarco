@@ -516,9 +516,11 @@ function situation(e,t){
   return {paye, comp, du, reste, retard, statut};
 }
 const projetPaye = eid => sum(S.tx.filter(x=>x.eleve===eid && x.col==='projet'), x=>x.montant);
+const SANSP = () => S.sansProjet || (S.sansProjet=['1ère PréapaTech']);
+const sansProjet = e => SANSP().includes(e.niveau);
 const prixP1 = () => S.prixP1 || (S.prixP1={});
 const prixP2 = () => S.prixP2 || (S.prixP2={});
-const projetDu = e => { const o=e.duProjet; if(o!==undefined && o!==null && o!=='') return +o; if(e.projetType==='P1') return +prixP1()[famille(e.niveau)] || 0; if(e.projetType==='P2') return +prixP2()[famille(e.niveau)] || 0; return S.prixProjet[famille(e.niveau)] || 0; };
+const projetDu = e => { if(sansProjet(e)) return 0; const o=e.duProjet; if(o!==undefined && o!==null && o!=='') return +o; if(e.projetType==='P1') return +prixP1()[famille(e.niveau)] || 0; if(e.projetType==='P2') return +prixP2()[famille(e.niveau)] || 0; return S.prixProjet[famille(e.niveau)] || 0; };
 function recettesAuto(compte, t){
   const L = S.tx.filter(x => compte==='projet' ? x.col==='projet' : compte==='competition' ? x.col==='compet' : compte==='masterclass' ? x.col==='mc' : (x.col!=='projet' && x.col!=='compet' && x.col!=='mc' && (!t || x.trim===t)));
   return L;
@@ -1083,11 +1085,12 @@ function payTrim(t){
   </table></div>
   <div class="legend"><span><i style="background:var(--green-l);border:1px solid var(--green)"></i>Réglé</span><span><i style="background:var(--orange-l);border:1px solid var(--orange)"></i>Partiel</span><span><i style="background:var(--purple-l);border:1px solid var(--purple)"></i>Compétiteurs</span><span><i style="background:#f1f4f8;border:1px solid #ccd"></i>Pas encore payé</span><span>· Reste = montant dû − (inscription + mois). Les compétiteurs ne comptent pas dans le reste.</span></div>`;
 }
+function setSansProjet(n,on){ const L=new Set(SANSP()); on?L.add(n):L.delete(n); S.sansProjet=NIVEAUX.filter(x=>L.has(x)); render(); toast(n+(on?' : pas de projet':' : avec projet')+' ✔'); }
 function setProjetType(id,v){ const e=elv(id); e.projetType = v||''; render(); toast(e.nom+' : '+({P1:'Projet 1 seul',P2:'Projet 2 seul'}[e.projetType]||'Projet 1+2')+' ✔'); }
 function setPrixProjetE(id,v){ const e=elv(id); v=String(v).trim(); e.duProjet = v===''?null:(+v||0); render(); toast(e.nom+' : '+(v===''?'prix du niveau':dt(e.duProjet))+' ✔'); }
 function payProjet(){
   setHead('Paiements · Projet 1+2', 'Prix modifiable ici : par niveau (à droite) ou par élève (case Prix projet)');
-  const list = elevesFiltres();
+  const all0 = elevesFiltres(), list = all0.filter(e=>!sansProjet(e)), nSans = all0.length-list.length;
   const days = JOURS.filter(j=>list.some(e=>e.jour===j));
   let rows = '';
   days.forEach(j=>{ const L=list.filter(e=>e.jour===j); L.forEach((e,i)=>{ const p=projetPaye(e.id), d=projetDu(e);
@@ -1108,8 +1111,11 @@ function payProjet(){
       <thead><tr><th>JR</th><th>N°</th><th style="text-align:left">Nom et Prénom</th><th>Niveau</th><th>Projet</th><th>Prix projet</th><th>Payé</th><th>Reste</th><th>Remarque</th><th>Mode de paiement</th><th>Type de paiement</th></tr></thead>
       <tbody>${rows}<tr class="tot"><td></td><td></td><td>TT</td><td></td><td class="small">${list.filter(e=>e.projetType==='P1').length} × P1 · ${list.filter(e=>e.projetType==='P2').length} × P2</td><td class="tt">${dt(sum(list,projetDu))}</td><td class="tt" style="text-align:center">${dt(sum(list,e=>projetPaye(e.id)))}</td><td class="tt">${dt(sum(list,e=>Math.max(0,projetDu(e)-projetPaye(e.id))))}</td><td colspan="3"></td></tr></tbody></table></div>
     <div class="card"><h3>Résumé par niveau</h3><table><tr><th>Niveau</th><th class="num">Élèves</th><th class="num">Total payé</th></tr>
-      ${resume.map(r=>`<tr><td>${r.n}</td><td class="num">${r.c}</td><td class="num">${dt(r.p)}</td></tr>`).join('')}
+      ${resume.map(r=>`<tr style="${SANSP().includes(r.n)?'opacity:.5':''}"><td>${r.n}${SANSP().includes(r.n)?' <span class="small muted">(pas de projet)</span>':''}</td><td class="num">${r.c}</td><td class="num">${dt(r.p)}</td></tr>`).join('')}
       <tr><td><b>À préciser</b></td><td class="num">${S.eleves.filter(e=>!famille(e.niveau)).length}</td><td></td></tr></table>
+      <h3 style="margin-top:16px">🚫 Niveaux sans projet</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 12px">${NIVEAUX.map(n=>`<label class="small" style="display:flex;gap:4px;align-items:center"><input type="checkbox" ${SANSP().includes(n)?'checked':''} onchange="setSansProjet('${js(n)}',this.checked)">${h(n)}</label>`).join('')}</div>
+      <div class="small muted" style="margin:4px 0 0">${nSans} élève(s) sans projet, pas affichés dans le tableau et pas comptés.</div>
       <h3 style="margin-top:16px">💡 Prix par niveau <span class="small muted">(modifiable)</span></h3>
       ${Object.keys(S.prixProjet).map(k=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><span style="flex:1">${h(k)}</span><input type="number" min="0" style="width:90px;font-weight:700" value="${S.prixProjet[k]}" onchange="S.prixProjet['${js(k)}']=+this.value||0;render();toast('Prix ${js(k)} enregistré ✔')"> DT</div>`).join('')}
       <h3 style="margin-top:16px">🤖 Prix Projet 1 seul <span class="small muted">(élève qui a déjà un robot)</span></h3>
